@@ -24,11 +24,12 @@ import {
 import { useAuth } from '@/contexts/auth-context';
 import { useSettings } from '@/contexts/settings-context';
 import axios from 'axios';
+import type { AxiosResponse } from 'axios';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://comply-x.onrender.com';
 
 interface MFASetupData {
-  methodId: number;
+  methodId?: number;
   secret: string;
   qrCode: string;
   backupCodes: string[];
@@ -52,6 +53,7 @@ export function MFASetup() {
   const [showBackupCodes, setShowBackupCodes] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [apiMode, setApiMode] = useState<'modern' | 'legacy'>('modern');
   const { user } = useAuth();
   const { security } = useSettings();
 
@@ -61,15 +63,52 @@ export function MFASetup() {
     fetchMFAStatus();
   }, []);
 
+  const withApiMode = async <T>(
+    modernCall: () => Promise<T>,
+    legacyCall: () => Promise<T>
+  ): Promise<{ result: T; mode: 'modern' | 'legacy' }> => {
+    if (apiMode === 'legacy') {
+      return { result: await legacyCall(), mode: 'legacy' };
+    }
+
+    try {
+      const result = await modernCall();
+      if (apiMode !== 'modern') {
+        setApiMode('modern');
+      }
+      return { result, mode: 'modern' };
+    } catch (error: any) {
+      if (error.response?.status === 404) {
+        const legacyResult = await legacyCall();
+        setApiMode('legacy');
+        return { result: legacyResult, mode: 'legacy' };
+      }
+      throw error;
+    }
+  };
+
+  const ensureDataUrl = (value: string) =>
+    value.startsWith('data:') ? value : `data:image/png;base64,${value}`;
+
   const fetchMFAStatus = async () => {
     try {
       const token = localStorage.getItem('auth_token');
       if (!token) return;
 
-      const response = await axios.get(`${API_BASE_URL}/api/mfa/status`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const data = response.data as Partial<MFAStatus> & { mfa_enabled?: boolean };
+      const { result: response } = await withApiMode<
+        AxiosResponse<Partial<MFAStatus> & { mfa_enabled?: boolean }>
+      >(
+        () =>
+          axios.get(`${API_BASE_URL}/api/mfa/status`, {
+            headers: { Authorization: `Bearer ${token}` }
+          }),
+        () =>
+          axios.get(`${API_BASE_URL}/api/auth/mfa/status`, {
+            headers: { Authorization: `Bearer ${token}` }
+          })
+      );
+
+      const data = response.data;
       setMfaStatus({
         enabled: Boolean(data.enabled ?? data.mfa_enabled),
         methods: Array.isArray(data.methods) ? data.methods : []
@@ -85,27 +124,60 @@ export function MFASetup() {
 
     try {
       const token = localStorage.getItem('auth_token');
-      const response = await axios.post(
-        `${API_BASE_URL}/api/mfa/totp/setup`,
-        { password: formData.password },
-        { headers: { Authorization: `Bearer ${token}` } }
+      const { result: response, mode } = await withApiMode<
+        | AxiosResponse<{
+            method_id: number;
+            secret_key: string;
+            qr_code_base64: string;
+            backup_codes: string[];
+          }>
+        | AxiosResponse<{
+            secret: string;
+            qr_code: string;
+            backup_codes: string[];
+          }>
+      >(
+        () =>
+          axios.post(
+            `${API_BASE_URL}/api/mfa/totp/setup`,
+            { password: formData.password },
+            { headers: { Authorization: `Bearer ${token}` } }
+          ),
+        () =>
+          axios.post(
+            `${API_BASE_URL}/api/auth/mfa/setup`,
+            { password: formData.password },
+            { headers: { Authorization: `Bearer ${token}` } }
+          )
       );
 
-      const data = response.data as {
-        method_id: number;
-        secret_key: string;
-        qr_code_base64: string;
-        backup_codes: string[];
-      };
+      if (mode === 'modern') {
+        const data = (response as AxiosResponse<{
+          method_id: number;
+          secret_key: string;
+          qr_code_base64: string;
+          backup_codes: string[];
+        }>).data;
 
-      setSetupData({
-        methodId: data.method_id,
-        secret: data.secret_key,
-        qrCode: data.qr_code_base64.startsWith('data:')
-          ? data.qr_code_base64
-          : `data:image/png;base64,${data.qr_code_base64}`,
-        backupCodes: data.backup_codes || []
-      });
+        setSetupData({
+          methodId: data.method_id,
+          secret: data.secret_key,
+          qrCode: ensureDataUrl(data.qr_code_base64),
+          backupCodes: data.backup_codes || []
+        });
+      } else {
+        const data = (response as AxiosResponse<{
+          secret: string;
+          qr_code: string;
+          backup_codes: string[];
+        }>).data;
+
+        setSetupData({
+          secret: data.secret,
+          qrCode: ensureDataUrl(data.qr_code),
+          backupCodes: data.backup_codes || []
+        });
+      }
       setCurrentStep('scan');
     } catch (error: any) {
       setError(error.response?.data?.detail || 'Failed to setup MFA');
@@ -122,13 +194,26 @@ export function MFASetup() {
 
     try {
       const token = localStorage.getItem('auth_token');
-      await axios.post(
-        `${API_BASE_URL}/api/mfa/totp/verify`,
-        {
-          method_id: setupData.methodId,
-          verification_code: formData.verificationCode
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
+      await withApiMode(
+        () =>
+          axios.post(
+            `${API_BASE_URL}/api/mfa/totp/verify`,
+            {
+              method_id: setupData.methodId,
+              verification_code: formData.verificationCode
+            },
+            { headers: { Authorization: `Bearer ${token}` } }
+          ),
+        () =>
+          axios.post(
+            `${API_BASE_URL}/api/auth/mfa/verify`,
+            {
+              secret: setupData.secret,
+              verification_code: formData.verificationCode,
+              backup_codes: setupData.backupCodes
+            },
+            { headers: { Authorization: `Bearer ${token}` } }
+          )
       );
 
       setCurrentStep('backup');
@@ -146,10 +231,19 @@ export function MFASetup() {
 
     try {
       const token = localStorage.getItem('auth_token');
-      await axios.post(
-        `${API_BASE_URL}/api/mfa/disable`,
-        { password: formData.password },
-        { headers: { Authorization: `Bearer ${token}` } }
+      await withApiMode(
+        () =>
+          axios.post(
+            `${API_BASE_URL}/api/mfa/disable`,
+            { password: formData.password },
+            { headers: { Authorization: `Bearer ${token}` } }
+          ),
+        () =>
+          axios.post(
+            `${API_BASE_URL}/api/auth/mfa/disable`,
+            { password: formData.password },
+            { headers: { Authorization: `Bearer ${token}` } }
+          )
       );
 
       await fetchMFAStatus();
