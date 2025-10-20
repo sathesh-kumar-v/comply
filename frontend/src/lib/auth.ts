@@ -117,26 +117,41 @@ class AuthService {
     })
   }
 
-  async getMFAStatus(): Promise<{enabled: boolean, methods: string[]}> {
-    const response = await this.apiClient.get('/auth/mfa/status')
-    return response.data
+  async getMFAStatus(): Promise<{ enabled: boolean; methods: string[] }> {
+    const response = await this.apiClient.get('/mfa/status')
+    const data = response.data as Partial<{ enabled: boolean; methods: string[]; mfa_enabled: boolean }>
+    return {
+      enabled: Boolean(data.enabled ?? data.mfa_enabled),
+      methods: Array.isArray(data.methods) ? data.methods : []
+    }
   }
 
-  async setupMFA(password: string): Promise<{secret: string, qr_code: string, backup_codes: string[]}> {
-    const response = await this.apiClient.post('/auth/mfa/setup', { password })
-    return response.data
+  async setupMFA(password: string): Promise<{ methodId: number; secret: string; qrCode: string; backupCodes: string[] }> {
+    const response = await this.apiClient.post('/mfa/totp/setup', { password })
+    const data = response.data as {
+      method_id: number
+      secret_key: string
+      qr_code_base64: string
+      backup_codes: string[]
+    }
+
+    return {
+      methodId: data.method_id,
+      secret: data.secret_key,
+      qrCode: data.qr_code_base64.startsWith('data:') ? data.qr_code_base64 : `data:image/png;base64,${data.qr_code_base64}`,
+      backupCodes: data.backup_codes || []
+    }
   }
 
-  async verifyMFA(secret: string, verificationCode: string, backupCodes: string[]): Promise<void> {
-    await this.apiClient.post('/auth/mfa/verify', {
-      secret,
-      verification_code: verificationCode,
-      backup_codes: backupCodes
+  async verifyMFA(methodId: number, verificationCode: string): Promise<void> {
+    await this.apiClient.post('/mfa/totp/verify', {
+      method_id: methodId,
+      verification_code: verificationCode
     })
   }
 
   async disableMFA(password: string): Promise<void> {
-    await this.apiClient.post('/auth/mfa/disable', { password })
+    await this.apiClient.post('/mfa/disable', { password })
   }
 
   async register(userData: RegisterData): Promise<User> {

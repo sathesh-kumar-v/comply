@@ -75,29 +75,39 @@ const defaultAudits: PlannedAudit[] = [
   }
 ]
 
+const INITIAL_AUDIT_FORM = {
+  title: "",
+  type: "",
+  departments: "",
+  scope: "",
+  objective: "",
+  framework: "",
+  riskLevel: "Medium",
+  startDate: "",
+  endDate: "",
+  leadAuditor: "",
+  team: "",
+  auditees: "",
+  room: "",
+  requirements: "",
+  announcement: "",
+  reminder: "",
+  completion: ""
+}
+
+const DEFAULT_NOTIFY_TEAM = {
+  announcement: true,
+  updates: true,
+  reminders: false,
+  completion: true
+}
+
 export default function AuditsPage() {
   const [activeTab, setActiveTab] = useState<"overview" | "create">("overview")
-  const [audits] = useState(defaultAudits)
-  const [notifyTeam, setNotifyTeam] = useState({ announcement: true, updates: true, reminders: false, completion: true })
-  const [formValues, setFormValues] = useState({
-    title: "",
-    type: "",
-    departments: "",
-    scope: "",
-    objective: "",
-    framework: "",
-    riskLevel: "Medium",
-    startDate: "",
-    endDate: "",
-    leadAuditor: "",
-    team: "",
-    auditees: "",
-    room: "",
-    requirements: "",
-    announcement: "",
-    reminder: "",
-    completion: ""
-  })
+  const [audits, setAudits] = useState(defaultAudits)
+  const [notifyTeam, setNotifyTeam] = useState(() => ({ ...DEFAULT_NOTIFY_TEAM }))
+  const [formValues, setFormValues] = useState(() => ({ ...INITIAL_AUDIT_FORM }))
+  const [alert, setAlert] = useState<{ type: "success" | "error"; message: string } | null>(null)
 
   const activeAudits = useMemo(() => audits.filter((audit) => audit.status !== "Completed"), [audits])
 
@@ -106,31 +116,99 @@ export default function AuditsPage() {
     const intent = new URLSearchParams(window.location.search).get("intent")
     if (intent === "create") {
       setActiveTab("create")
+      setAlert(null)
     }
   }, [])
 
   const handleChange = (key: keyof typeof formValues, value: string) => {
-    setFormValues((prev) => ({ ...prev, [key]: value }))
+    setFormValues((prev) => {
+      if (key === "startDate") {
+        const nextEnd = prev.endDate && value && prev.endDate < value ? value : prev.endDate
+        return { ...prev, startDate: value, endDate: nextEnd }
+      }
+
+      if (key === "endDate" && prev.startDate && value && value < prev.startDate) {
+        return { ...prev, endDate: prev.startDate }
+      }
+
+      return { ...prev, [key]: value }
+    })
   }
 
   const handleSubmit = () => {
-    console.log("Audit plan saved", { formValues, notifyTeam })
+    setAlert(null)
+
+    const requiredFields: (keyof typeof formValues)[] = ["title", "type", "startDate", "endDate", "leadAuditor"]
+    const missing = requiredFields.filter((field) => !formValues[field])
+
+    if (missing.length > 0) {
+      setAlert({
+        type: "error",
+        message: "Please complete the title, type, lead auditor, and scheduling fields before creating an audit."
+      })
+      return
+    }
+
+    if (formValues.startDate && formValues.endDate && new Date(formValues.endDate) < new Date(formValues.startDate)) {
+      setAlert({ type: "error", message: "The planned end date cannot be earlier than the start date." })
+      return
+    }
+
+    const newAudit: PlannedAudit = {
+      id: `AUD-${new Date().getFullYear()}-${Math.floor(Math.random() * 900 + 100).toString()}`,
+      title: formValues.title,
+      type: formValues.type,
+      department: formValues.departments || "Pending assignment",
+      startDate: formValues.startDate,
+      endDate: formValues.endDate,
+      status: "Scheduled",
+      leadAuditor: formValues.leadAuditor,
+      progress: 0
+    }
+
+    setAudits((prev) => [newAudit, ...prev])
+    setAlert({
+      type: "success",
+      message: "Audit plan created successfully and added to your planning dashboard."
+    })
+    setActiveTab("overview")
+    setFormValues(() => ({ ...INITIAL_AUDIT_FORM }))
+    setNotifyTeam(() => ({ ...DEFAULT_NOTIFY_TEAM }))
   }
 
   return (
     <DashboardLayout>
       <div className="space-y-6 p-4 sm:p-6">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-bold text-gray-900">Audit Builder</h1>
-          <p className="text-sm text-gray-600">
-            Plan, schedule, and orchestrate audits with AI-assisted recommendations.
-          </p>
-        </div>
+      <div className="space-y-1">
+        <h1 className="text-2xl font-bold text-gray-900">Audit Builder</h1>
+        <p className="text-sm text-gray-600">
+          Plan, schedule, and orchestrate audits with AI-assisted recommendations.
+        </p>
+      </div>
 
-        <Tabs
-          value={activeTab}
-          onValueChange={(value) => setActiveTab(value as "overview" | "create")}
-          className="space-y-6"
+      {alert && (
+        <div
+          className={`rounded-xl border p-4 text-sm shadow-sm sm:flex sm:items-center sm:justify-between ${
+            alert.type === "success"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+              : "border-red-200 bg-red-50 text-red-700"
+          }`}
+        >
+          <span>{alert.message}</span>
+          <button
+            type="button"
+            onClick={() => setAlert(null)}
+            className="mt-3 inline-flex items-center text-xs font-semibold uppercase tracking-wide underline-offset-4 hover:underline sm:mt-0"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      <Tabs
+        value={activeTab}
+        onValueChange={(value) => setActiveTab(value as "overview" | "create")}
+        className="space-y-6"
         >
           <TabsList className="bg-emerald-50/60">
             <TabsTrigger value="overview">Planning Dashboard</TabsTrigger>
@@ -342,6 +420,7 @@ export default function AuditsPage() {
                         id="endDate"
                         type="date"
                         value={formValues.endDate}
+                        min={formValues.startDate || undefined}
                         onChange={(event) => handleChange("endDate", event.target.value)}
                       />
                     </div>

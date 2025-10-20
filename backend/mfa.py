@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Body
 from sqlalchemy.orm import Session
 from database import get_db
-from auth import get_current_user
+from auth import get_current_user, verify_password
 from models import User, UserDevice, MFAMethod
 from pydantic import BaseModel, Field
 from typing import List, Optional
@@ -55,10 +55,19 @@ class MFAMethodResponse(BaseModel):
         from_attributes = True
 
 class TOTPSetupResponse(BaseModel):
+    method_id: int
     secret_key: str
     qr_code_url: str
     qr_code_base64: str
     backup_codes: List[str]
+
+
+class TOTPSetupRequest(BaseModel):
+    password: Optional[str] = None
+
+
+class DisableMFARequest(BaseModel):
+    password: Optional[str] = None
 
 class MFAVerificationRequest(BaseModel):
     method_id: int
@@ -275,7 +284,7 @@ async def remove_device(
 
 # MFA management endpoints
 
-@router.get("/mfa/methods", response_model=List[MFAMethodResponse], summary="List MFA Methods")
+@router.get("/methods", response_model=List[MFAMethodResponse], summary="List MFA Methods")
 async def list_mfa_methods(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -295,13 +304,21 @@ async def list_mfa_methods(
     
     return methods
 
-@router.post("/mfa/totp/setup", response_model=TOTPSetupResponse, summary="Setup TOTP MFA")
+@router.post("/totp/setup", response_model=TOTPSetupResponse, summary="Setup TOTP MFA")
 async def setup_totp_mfa(
+    setup_request: Optional[TOTPSetupRequest] = Body(default=None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """Setup Time-based One-Time Password (TOTP) MFA using an authenticator app"""
-    
+
+    password = setup_request.password if setup_request else None
+    if password and not verify_password(password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid password provided"
+        )
+
     # Check if TOTP is already enabled
     existing_totp = db.query(MFAMethod).filter(
         MFAMethod.user_id == current_user.id,
@@ -347,15 +364,17 @@ async def setup_totp_mfa(
     db.add(db_backup)
     
     db.commit()
-    
+    db.refresh(db_totp)
+
     return TOTPSetupResponse(
+        method_id=db_totp.id,
         secret_key=secret,
         qr_code_url=totp_uri,
         qr_code_base64=qr_code_base64,
         backup_codes=backup_codes
     )
 
-@router.post("/mfa/totp/verify", summary="Verify and Enable TOTP MFA")
+@router.post("/totp/verify", summary="Verify and Enable TOTP MFA")
 async def verify_totp_mfa(
     verification: MFAVerificationRequest,
     db: Session = Depends(get_db),
@@ -400,10 +419,44 @@ async def verify_totp_mfa(
     current_user.mfa_enabled = True
     
     db.commit()
-    
+
     return {"message": "TOTP MFA enabled successfully"}
 
-@router.post("/mfa/sms/setup", summary="Setup SMS MFA")
+
+@router.post("/disable", summary="Disable all MFA methods")
+async def disable_mfa(
+    disable_request: DisableMFARequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Disable multi-factor authentication for the current user"""
+
+    if disable_request.password:
+        if not verify_password(disable_request.password, current_user.hashed_password):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid password provided"
+            )
+
+    methods = db.query(MFAMethod).filter(
+        MFAMethod.user_id == current_user.id
+    ).all()
+
+    if not methods and not current_user.mfa_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No MFA methods configured"
+        )
+
+    for method in methods:
+        db.delete(method)
+
+    current_user.mfa_enabled = False
+    db.commit()
+
+    return {"message": "MFA disabled successfully"}
+
+@router.post("/sms/setup", summary="Setup SMS MFA")
 async def setup_sms_mfa(
     sms_request: SMSMFARequest,
     db: Session = Depends(get_db),
@@ -450,7 +503,7 @@ async def setup_sms_mfa(
         "phone_number": sms_request.phone_number[-4:]  # Show only last 4 digits
     }
 
-@router.post("/mfa/email/setup", summary="Setup Email MFA")  
+@router.post("/email/setup", summary="Setup Email MFA")
 async def setup_email_mfa(
     email_request: EmailMFARequest,
     db: Session = Depends(get_db),
@@ -497,7 +550,7 @@ async def setup_email_mfa(
         "email_address": email_request.email_address
     }
 
-@router.post("/mfa/verify", summary="Verify MFA Method")
+@router.post("/verify", summary="Verify MFA Method")
 async def verify_mfa_method(
     verification: MFAVerificationRequest,
     db: Session = Depends(get_db),
@@ -535,7 +588,7 @@ async def verify_mfa_method(
     
     return {"message": f"{method.method_type.upper()} MFA enabled successfully"}
 
-@router.delete("/mfa/methods/{method_id}", summary="Disable MFA Method")
+@router.delete("/methods/{method_id}", summary="Disable MFA Method")
 async def disable_mfa_method(
     method_id: int,
     db: Session = Depends(get_db),
@@ -570,12 +623,23 @@ async def disable_mfa_method(
     
     return {"message": "MFA method disabled successfully"}
 
-@router.get("/mfa/status", summary="Get MFA Status")
+@router.get("/status", summary="Get MFA Status")
 async def get_mfa_status(
+    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """Get current MFA status for the user"""
+
+    enabled_methods = db.query(MFAMethod).filter(
+        MFAMethod.user_id == current_user.id,
+        MFAMethod.is_enabled == True
+    ).all()
+
+    method_types = [method.method_type for method in enabled_methods]
+
     return {
+        "enabled": bool(current_user.mfa_enabled),
+        "methods": method_types,
         "mfa_enabled": current_user.mfa_enabled,
         "user_id": current_user.id,
         "last_login": current_user.last_login

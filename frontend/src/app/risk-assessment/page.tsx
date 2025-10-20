@@ -284,7 +284,15 @@ export default function CountryRiskPage() {
                         id="startDate"
                         type="date"
                         value={formValues.startDate}
-                        onChange={(event) => setFormValues((prev) => ({ ...prev, startDate: event.target.value }))}
+                        onChange={(event) => {
+                          const value = event.target.value
+                          setFormValues((prev) => ({
+                            ...prev,
+                            startDate: value,
+                            endDate:
+                              prev.endDate && value && prev.endDate < value ? value : prev.endDate
+                          }))
+                        }}
                       />
                     </div>
                     <div className="space-y-2">
@@ -293,7 +301,15 @@ export default function CountryRiskPage() {
                         id="endDate"
                         type="date"
                         value={formValues.endDate}
-                        onChange={(event) => setFormValues((prev) => ({ ...prev, endDate: event.target.value }))}
+                        min={formValues.startDate || undefined}
+                        onChange={(event) => {
+                          const value = event.target.value
+                          setFormValues((prev) => ({
+                            ...prev,
+                            endDate:
+                              prev.startDate && value && value < prev.startDate ? prev.startDate : value
+                          }))
+                        }}
                       />
                     </div>
                     <div className="space-y-2">
