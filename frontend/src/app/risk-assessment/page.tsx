@@ -11,7 +11,36 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { Globe2, AlertTriangle, Upload } from "lucide-react"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Globe2, AlertTriangle, Upload, CheckCircle2, AlertCircle } from "lucide-react"
+
+interface AssessmentLogEntry {
+  id: number
+  assessment: string
+  region: string
+  owner: string
+  status: string
+  updated: string
+}
+
+interface RiskFormValues {
+  title: string
+  assessmentType: string
+  selectedCountries: string
+  framework: string
+  startDate: string
+  endDate: string
+  updateFrequency: string
+  assessor: string
+  reviewTeam: string
+  notes: string
+}
+
+interface LaunchFeedback {
+  type: "success" | "error"
+  title: string
+  details: string[]
+}
 
 interface CountryRisk {
   country: string
@@ -31,31 +60,43 @@ const SAMPLE_COUNTRIES: CountryRisk[] = [
   { country: "South Africa", score: 72, level: "Critical", nextAssessment: "Mar 30", trend: "Deteriorating" }
 ]
 
+const DEFAULT_FORM_VALUES: RiskFormValues = {
+  title: "",
+  assessmentType: "Comprehensive",
+  selectedCountries: "",
+  framework: "",
+  startDate: "",
+  endDate: "",
+  updateFrequency: "Quarterly",
+  assessor: "",
+  reviewTeam: "",
+  notes: ""
+}
+
+const DEFAULT_WEIGHTS = {
+  political: 20,
+  economic: 20,
+  regulatory: 15,
+  corruption: 10,
+  infrastructure: 10,
+  currency: 10,
+  trade: 10,
+  security: 5
+}
+
+const INITIAL_ASSESSMENT_LOG: AssessmentLogEntry[] = [
+  { id: 1, assessment: "LATAM Regulatory Pulse", region: "South America", owner: "D. Alvarez", status: "In Progress", updated: "Mar 4" },
+  { id: 2, assessment: "EMEA Political Review", region: "Europe", owner: "S. Ibrahim", status: "Draft", updated: "Mar 1" },
+  { id: 3, assessment: "Asia Pacific Compliance Update", region: "Asia Pacific", owner: "L. Chen", status: "Published", updated: "Feb 26" }
+]
+
 export default function CountryRiskPage() {
   const [activeTab, setActiveTab] = useState<"dashboard" | "create">("dashboard")
   const [countries] = useState(SAMPLE_COUNTRIES)
-  const [formValues, setFormValues] = useState({
-    title: "",
-    assessmentType: "Comprehensive",
-    selectedCountries: "",
-    framework: "",
-    startDate: "",
-    endDate: "",
-    updateFrequency: "Quarterly",
-    assessor: "",
-    reviewTeam: "",
-    notes: ""
-  })
-  const [weights, setWeights] = useState({
-    political: 20,
-    economic: 20,
-    regulatory: 15,
-    corruption: 10,
-    infrastructure: 10,
-    currency: 10,
-    trade: 10,
-    security: 5
-  })
+  const [formValues, setFormValues] = useState<RiskFormValues>({ ...DEFAULT_FORM_VALUES })
+  const [weights, setWeights] = useState({ ...DEFAULT_WEIGHTS })
+  const [assessmentLog, setAssessmentLog] = useState<AssessmentLogEntry[]>(INITIAL_ASSESSMENT_LOG)
+  const [launchFeedback, setLaunchFeedback] = useState<LaunchFeedback | null>(null)
 
   const highRiskCountries = useMemo(() => countries.filter((item) => item.level === "High" || item.level === "Critical"), [countries])
 
@@ -67,12 +108,75 @@ export default function CountryRiskPage() {
     }
   }, [])
 
+  const updateFormValue = <K extends keyof RiskFormValues>(key: K, value: RiskFormValues[K]) => {
+    setFormValues((prev) => ({ ...prev, [key]: value }))
+    if (launchFeedback?.type === "error") {
+      setLaunchFeedback(null)
+    }
+  }
+
   const handleWeightChange = (key: keyof typeof weights, value: number) => {
     setWeights((prev) => ({ ...prev, [key]: value }))
   }
 
   const handleSubmit = () => {
-    console.log("Risk assessment saved", { formValues, weights })
+    const trimmedTitle = formValues.title.trim()
+    const normalizedCountries = formValues.selectedCountries
+      .split(/[\n,]/)
+      .map((country) => country.trim())
+      .filter(Boolean)
+
+    if (!trimmedTitle) {
+      setActiveTab("create")
+      setLaunchFeedback({
+        type: "error",
+        title: "Add an assessment name",
+        details: ["Provide a descriptive title before launching the risk assessment."]
+      })
+      return
+    }
+
+    const now = new Date()
+    const formattedDate = now.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+    const owner = formValues.assessor.trim() || "Unassigned"
+    const regionSummary =
+      normalizedCountries.length === 0
+        ? "Scope TBD"
+        : normalizedCountries.length === 1
+          ? normalizedCountries[0]
+          : `${normalizedCountries[0]} + ${normalizedCountries.length - 1} more`
+
+    const newEntry: AssessmentLogEntry = {
+      id: now.valueOf(),
+      assessment: trimmedTitle,
+      region: regionSummary,
+      owner,
+      status: "Scheduled",
+      updated: formattedDate
+    }
+
+    setAssessmentLog((prev) => [newEntry, ...prev])
+    setLaunchFeedback({
+      type: "success",
+      title: "Risk assessment scheduled",
+      details: [
+        `${trimmedTitle} will run as a ${formValues.assessmentType.toLowerCase()} review.`,
+        normalizedCountries.length
+          ? `Scope includes ${normalizedCountries.length > 1 ? `${normalizedCountries[0]} and ${normalizedCountries.length - 1} additional regions` : normalizedCountries[0]}.`
+          : "Add operating regions to finalise the scope.",
+        `Primary owner: ${owner}.`,
+        `Review team: ${formValues.reviewTeam.trim() || "Not specified"}.`,
+        `Updates planned ${formValues.updateFrequency.toLowerCase()}.`
+      ]
+    })
+
+    const { assessmentType, updateFrequency } = formValues
+    setFormValues(() => ({
+      ...DEFAULT_FORM_VALUES,
+      assessmentType,
+      updateFrequency
+    }))
+    setActiveTab("dashboard")
   }
 
   return (
@@ -84,6 +188,44 @@ export default function CountryRiskPage() {
             Monitor geopolitical and regulatory exposure with AI-curated insights.
           </p>
         </div>
+
+        {launchFeedback && (
+          <Alert
+            className={
+              launchFeedback.type === "success"
+                ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+                : "border-red-200 bg-red-50 text-red-900"
+            }
+          >
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex items-start gap-3">
+                {launchFeedback.type === "success" ? (
+                  <CheckCircle2 className="mt-1 h-5 w-5 text-emerald-600" />
+                ) : (
+                  <AlertCircle className="mt-1 h-5 w-5 text-red-600" />
+                )}
+                <div>
+                  <AlertTitle>{launchFeedback.title}</AlertTitle>
+                  <AlertDescription>
+                    <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
+                      {launchFeedback.details.map((detail) => (
+                        <li key={detail}>{detail}</li>
+                      ))}
+                    </ul>
+                  </AlertDescription>
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setLaunchFeedback(null)}
+                className="self-end sm:self-start"
+              >
+                Dismiss
+              </Button>
+            </div>
+          </Alert>
+        )}
 
         <Tabs
           value={activeTab}
@@ -174,27 +316,15 @@ export default function CountryRiskPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-blue-50 bg-white">
-                    <tr>
-                      <td className="px-4 py-3">LATAM Regulatory Pulse</td>
-                      <td className="px-4 py-3">South America</td>
-                      <td className="px-4 py-3">D. Alvarez</td>
-                      <td className="px-4 py-3">In Progress</td>
-                      <td className="px-4 py-3">Mar 4</td>
-                    </tr>
-                    <tr>
-                      <td className="px-4 py-3">EMEA Political Review</td>
-                      <td className="px-4 py-3">Europe</td>
-                      <td className="px-4 py-3">S. Ibrahim</td>
-                      <td className="px-4 py-3">Draft</td>
-                      <td className="px-4 py-3">Mar 1</td>
-                    </tr>
-                    <tr>
-                      <td className="px-4 py-3">Asia Pacific Compliance Update</td>
-                      <td className="px-4 py-3">Asia Pacific</td>
-                      <td className="px-4 py-3">L. Chen</td>
-                      <td className="px-4 py-3">Published</td>
-                      <td className="px-4 py-3">Feb 26</td>
-                    </tr>
+                    {assessmentLog.map((entry) => (
+                      <tr key={entry.id}>
+                        <td className="px-4 py-3">{entry.assessment}</td>
+                        <td className="px-4 py-3">{entry.region}</td>
+                        <td className="px-4 py-3">{entry.owner}</td>
+                        <td className="px-4 py-3">{entry.status}</td>
+                        <td className="px-4 py-3">{entry.updated}</td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </CardContent>
@@ -220,14 +350,14 @@ export default function CountryRiskPage() {
                         id="title"
                         placeholder="Q2 Cross-Border Compliance Risk Review"
                         value={formValues.title}
-                        onChange={(event) => setFormValues((prev) => ({ ...prev, title: event.target.value }))}
+                        onChange={(event) => updateFormValue("title", event.target.value)}
                       />
                     </div>
                     <div className="space-y-2">
                       <Label>Assessment Type</Label>
                       <Select
                         value={formValues.assessmentType}
-                        onValueChange={(value) => setFormValues((prev) => ({ ...prev, assessmentType: value }))}
+                        onValueChange={(value) => updateFormValue("assessmentType", value)}
                       >
                         <SelectTrigger className="w-full">
                           <SelectValue />
@@ -248,7 +378,7 @@ export default function CountryRiskPage() {
                         rows={3}
                         placeholder="Type to search and list countries included"
                         value={formValues.selectedCountries}
-                        onChange={(event) => setFormValues((prev) => ({ ...prev, selectedCountries: event.target.value }))}
+                        onChange={(event) => updateFormValue("selectedCountries", event.target.value)}
                       />
                     </div>
                     <div className="space-y-2">
@@ -257,14 +387,14 @@ export default function CountryRiskPage() {
                         id="framework"
                         placeholder="ISO 31000, COSO ERM"
                         value={formValues.framework}
-                        onChange={(event) => setFormValues((prev) => ({ ...prev, framework: event.target.value }))}
+                        onChange={(event) => updateFormValue("framework", event.target.value)}
                       />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="updateFrequency">Update Frequency</Label>
                       <Select
                         value={formValues.updateFrequency}
-                        onValueChange={(value) => setFormValues((prev) => ({ ...prev, updateFrequency: value }))}
+                        onValueChange={(value) => updateFormValue("updateFrequency", value)}
                       >
                         <SelectTrigger className="w-full">
                           <SelectValue />
@@ -292,6 +422,9 @@ export default function CountryRiskPage() {
                             endDate:
                               prev.endDate && value && prev.endDate < value ? value : prev.endDate
                           }))
+                          if (launchFeedback?.type === "error") {
+                            setLaunchFeedback(null)
+                          }
                         }}
                       />
                     </div>
@@ -309,6 +442,9 @@ export default function CountryRiskPage() {
                             endDate:
                               prev.startDate && value && value < prev.startDate ? prev.startDate : value
                           }))
+                          if (launchFeedback?.type === "error") {
+                            setLaunchFeedback(null)
+                          }
                         }}
                       />
                     </div>
@@ -318,7 +454,7 @@ export default function CountryRiskPage() {
                         id="assessor"
                         placeholder="Primary owner"
                         value={formValues.assessor}
-                        onChange={(event) => setFormValues((prev) => ({ ...prev, assessor: event.target.value }))}
+                        onChange={(event) => updateFormValue("assessor", event.target.value)}
                       />
                     </div>
                     <div className="space-y-2">
@@ -327,7 +463,7 @@ export default function CountryRiskPage() {
                         id="reviewTeam"
                         placeholder="Review committee or peers"
                         value={formValues.reviewTeam}
-                        onChange={(event) => setFormValues((prev) => ({ ...prev, reviewTeam: event.target.value }))}
+                        onChange={(event) => updateFormValue("reviewTeam", event.target.value)}
                       />
                     </div>
                   </div>
@@ -375,7 +511,7 @@ export default function CountryRiskPage() {
                         rows={4}
                         placeholder="Summarise key concerns, triggers, and data sources"
                         value={formValues.notes}
-                        onChange={(event) => setFormValues((prev) => ({ ...prev, notes: event.target.value }))}
+                        onChange={(event) => updateFormValue("notes", event.target.value)}
                       />
                     </div>
                     <div className="flex h-full flex-col justify-center rounded-lg border border-dashed border-blue-200 bg-blue-50/40 p-6 text-center text-sm text-blue-700">
