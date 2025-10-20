@@ -1,0 +1,19 @@
+# Project Configuration
+project_name: "Comply-X"
+description: "A starter kit for building modern web applications with Next.js and FastAPI."
+version: "1.0.0"
+  Frontend:
+  - Next.js 14+ (App Router) - Better for SSR, SEO, and performance
+  - ShadCN/UI - Excellent component library with built-in theming
+  - Tailwind CSS - Utility-first styling
+  - React Hook Form + Zod - Form validation
+  - TanStack Query - Server state management
+  - Zustand - Client state management
+
+  Backend:
+  - FastAPI - Excellent choice for async APIs
+  - SQLAlchemy 2.0 - ORM with async support
+  - PostgreSQL - Reliable database
+  - Alembic - Database migrations
+  - Pydantic - Data validation
+  - JWT - Authentication tokens

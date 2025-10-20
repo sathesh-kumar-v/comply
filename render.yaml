@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: comply-x
+    env: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: 8000
