@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { useEffect, useState } from 'react'
+import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
 import { Eye, EyeOff, Loader2, ChevronRight, ChevronLeft, Check, User, Lock, Building, Shield, Settings } from 'lucide-react'
@@ -19,6 +19,7 @@ import {
 import { Progress } from '@/components/ui/progress'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/contexts/auth-context'
+import { DEPARTMENT_OPTIONS, OTHER_DEPARTMENT_VALUE, isPredefinedDepartment } from '@/constants/departments'
 
 const registerSchema = z.object({
   // Step 1: Personal Information
@@ -96,6 +97,8 @@ export function RegisterForm({ onToggle, onSuccess }: RegisterFormProps) {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
   const [selectedAreas, setSelectedAreas] = useState<string[]>([])
+  const [departmentSelection, setDepartmentSelection] = useState<string>('')
+  const [departmentOther, setDepartmentOther] = useState<string>('')
   const { register: registerUser } = useAuth()
 
   const {
@@ -104,6 +107,8 @@ export function RegisterForm({ onToggle, onSuccess }: RegisterFormProps) {
     setValue,
     getValues,
     trigger,
+    control,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<RegisterFormData>({
     resolver: zodResolver(registerSchema),
@@ -116,8 +121,26 @@ export function RegisterForm({ onToggle, onSuccess }: RegisterFormProps) {
     },
   })
 
+  const watchDepartment = watch('department')
+
   const totalSteps = WIZARD_STEPS.length
   const progressPercentage = (currentStep / totalSteps) * 100
+
+  useEffect(() => {
+    if (!watchDepartment) {
+      setDepartmentSelection('')
+      setDepartmentOther('')
+      return
+    }
+
+    if (isPredefinedDepartment(watchDepartment)) {
+      setDepartmentSelection(watchDepartment)
+      setDepartmentOther('')
+    } else {
+      setDepartmentSelection(OTHER_DEPARTMENT_VALUE)
+      setDepartmentOther(watchDepartment)
+    }
+  }, [watchDepartment])
 
   const nextStep = async () => {
     const fieldsToValidate = getStepFields(currentStep)
@@ -358,12 +381,51 @@ export function RegisterForm({ onToggle, onSuccess }: RegisterFormProps) {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="department">Department *</Label>
-                <Input
-                  id="department"
-                  type="text"
-                  placeholder="IT"
-                  {...register('department')}
-                  className={errors.department ? 'border-red-500' : ''}
+                <Controller
+                  control={control}
+                  name="department"
+                  render={({ field }) => (
+                    <div className="space-y-2">
+                      <Select
+                        value={departmentSelection || undefined}
+                        onValueChange={(value) => {
+                          setDepartmentSelection(value)
+                          if (value === OTHER_DEPARTMENT_VALUE) {
+                            setDepartmentOther('')
+                            field.onChange('')
+                          } else {
+                            setDepartmentOther('')
+                            field.onChange(value)
+                          }
+                        }}
+                      >
+                        <SelectTrigger id="department" className={errors.department ? 'border-red-500' : ''}>
+                          <SelectValue placeholder="Select department" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {DEPARTMENT_OPTIONS.map((department) => (
+                            <SelectItem key={department} value={department}>
+                              {department}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {departmentSelection === OTHER_DEPARTMENT_VALUE && (
+                        <Input
+                          id="department-other"
+                          type="text"
+                          placeholder="Enter department"
+                          value={departmentOther}
+                          onChange={(event) => {
+                            const next = event.target.value
+                            setDepartmentOther(next)
+                            field.onChange(next)
+                          }}
+                          className={`mt-2 ${errors.department ? 'border-red-500' : ''}`}
+                        />
+                      )}
+                    </div>
+                  )}
                 />
                 {errors.department && (
                   <p className="text-sm text-red-500">{errors.department.message}</p>

@@ -14,6 +14,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Separator } from "@/components/ui/separator"
 import { Progress } from "@/components/ui/progress"
 import { ClipboardList, AlertTriangle, CheckCircle } from "lucide-react"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { DEPARTMENT_OPTIONS, OTHER_DEPARTMENT_VALUE } from "@/constants/departments"
 
 interface ActionRecord {
   id: string
@@ -77,29 +79,34 @@ const SAMPLE_ACTIONS: ActionRecord[] = [
   }
 ]
 
+const INITIAL_FORM_VALUES = {
+  title: "",
+  actionType: "",
+  source: "",
+  reference: "",
+  department: "",
+  priority: "Medium" as ActionRecord["priority"],
+  impact: "",
+  urgency: "Medium",
+  problem: "",
+  rootCause: "",
+  factors: "",
+  actionPlan: "",
+  dueDate: "",
+  owner: "",
+  reviewTeam: "",
+  budget: "",
+  approvalRequired: "No",
+  approver: ""
+}
+
 export default function CorrectiveActionsPage() {
   const [activeTab, setActiveTab] = useState<"dashboard" | "create">("dashboard")
-  const [actions] = useState(SAMPLE_ACTIONS)
-  const [formValues, setFormValues] = useState({
-    title: "",
-    actionType: "",
-    source: "",
-    reference: "",
-    department: "",
-    priority: "Medium" as ActionRecord["priority"],
-    impact: "",
-    urgency: "Medium",
-    problem: "",
-    rootCause: "",
-    factors: "",
-    actionPlan: "",
-    dueDate: "",
-    owner: "",
-    reviewTeam: "",
-    budget: "",
-    approvalRequired: "No",
-    approver: ""
-  })
+  const [actions, setActions] = useState<ActionRecord[]>(SAMPLE_ACTIONS)
+  const [formValues, setFormValues] = useState({ ...INITIAL_FORM_VALUES })
+  const [departmentSelection, setDepartmentSelection] = useState<string>("")
+  const [otherDepartment, setOtherDepartment] = useState<string>("")
+  const [formError, setFormError] = useState<string | null>(null)
 
   const highPriorityActions = useMemo(() => actions.filter((action) => action.priority === "High" || action.priority === "Critical"), [actions])
 
@@ -111,8 +118,68 @@ export default function CorrectiveActionsPage() {
     }
   }, [])
 
+  const resetForm = () => {
+    setFormValues({ ...INITIAL_FORM_VALUES })
+    setDepartmentSelection("")
+    setOtherDepartment("")
+  }
+
+  const handleDepartmentSelect = (value: string) => {
+    setDepartmentSelection(value)
+    if (value === OTHER_DEPARTMENT_VALUE) {
+      setOtherDepartment("")
+      setFormValues((prev) => ({ ...prev, department: "" }))
+    } else {
+      setOtherDepartment("")
+      setFormValues((prev) => ({ ...prev, department: value }))
+      setFormError(null)
+    }
+  }
+
+  const handleOtherDepartmentChange = (value: string) => {
+    setOtherDepartment(value)
+    setFormValues((prev) => ({ ...prev, department: value }))
+  }
+
   const handleSubmit = () => {
-    console.log("Corrective action submitted", formValues)
+    const trimmedTitle = formValues.title.trim()
+    const trimmedActionType = formValues.actionType.trim()
+    const trimmedDepartment = formValues.department.trim()
+
+    if (!trimmedTitle || !trimmedActionType || !trimmedDepartment) {
+      const messages = [
+        !trimmedTitle ? "Provide an action title." : null,
+        !trimmedActionType ? "Select an action type." : null,
+        !trimmedDepartment ? "Choose a department or specify one under Other." : null
+      ].filter((entry): entry is string => Boolean(entry))
+
+      setFormError(messages.join(" "))
+      setActiveTab("create")
+      return
+    }
+
+    const now = new Date()
+    const sequence = Math.floor(Math.random() * 900 + 100)
+      .toString()
+      .padStart(3, "0")
+
+    const newAction: ActionRecord = {
+      id: `CA-${now.getFullYear()}-${sequence}`,
+      title: trimmedTitle,
+      type: trimmedActionType,
+      source: formValues.source.trim() || "Not specified",
+      department: trimmedDepartment,
+      priority: formValues.priority,
+      status: "Open",
+      owner: formValues.owner.trim() || "Unassigned",
+      dueDate: formValues.dueDate || "TBD",
+      progress: 0
+    }
+
+    setActions((prev) => [newAction, ...prev])
+    setFormError(null)
+    resetForm()
+    setActiveTab("dashboard")
   }
 
   return (
@@ -218,6 +285,12 @@ export default function CorrectiveActionsPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-8">
+                {formError && (
+                  <Alert variant="destructive">
+                    <AlertTitle>Missing required information</AlertTitle>
+                    <AlertDescription>{formError}</AlertDescription>
+                  </Alert>
+                )}
                 <section className="space-y-4">
                   <div>
                     <h3 className="text-lg font-semibold">Action Details</h3>
@@ -268,12 +341,30 @@ export default function CorrectiveActionsPage() {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="department">Department</Label>
-                      <Input
-                        id="department"
-                        placeholder="Owning department"
-                        value={formValues.department}
-                        onChange={(event) => setFormValues((prev) => ({ ...prev, department: event.target.value }))}
-                      />
+                      <Select
+                        value={departmentSelection || undefined}
+                        onValueChange={handleDepartmentSelect}
+                      >
+                        <SelectTrigger id="department" className="w-full">
+                          <SelectValue placeholder="Select department" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {DEPARTMENT_OPTIONS.map((department) => (
+                            <SelectItem key={department} value={department}>
+                              {department}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {departmentSelection === OTHER_DEPARTMENT_VALUE && (
+                        <Input
+                          id="department-other"
+                          placeholder="Enter department"
+                          value={otherDepartment}
+                          onChange={(event) => handleOtherDepartmentChange(event.target.value)}
+                          className="mt-2"
+                        />
+                      )}
                     </div>
                     <div className="space-y-2">
                       <Label>Priority</Label>

@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { CalendarDays, Users, Shield, Clock } from "lucide-react"
+import { DEPARTMENT_OPTIONS, OTHER_DEPARTMENT_VALUE } from "@/constants/departments"
 
 interface PlannedAudit {
   id: string
@@ -78,7 +79,7 @@ const defaultAudits: PlannedAudit[] = [
 const INITIAL_AUDIT_FORM = {
   title: "",
   type: "",
-  departments: "",
+  department: "",
   scope: "",
   objective: "",
   framework: "",
@@ -108,6 +109,8 @@ export default function AuditsPage() {
   const [notifyTeam, setNotifyTeam] = useState(() => ({ ...DEFAULT_NOTIFY_TEAM }))
   const [formValues, setFormValues] = useState(() => ({ ...INITIAL_AUDIT_FORM }))
   const [alert, setAlert] = useState<{ type: "success" | "error"; message: string } | null>(null)
+  const [departmentSelection, setDepartmentSelection] = useState<string>("")
+  const [otherDepartment, setOtherDepartment] = useState<string>("")
 
   const activeAudits = useMemo(() => audits.filter((audit) => audit.status !== "Completed"), [audits])
 
@@ -135,16 +138,32 @@ export default function AuditsPage() {
     })
   }
 
+  const handleDepartmentSelect = (value: string) => {
+    setDepartmentSelection(value)
+    if (value === OTHER_DEPARTMENT_VALUE) {
+      setOtherDepartment("")
+      setFormValues((prev) => ({ ...prev, department: "" }))
+    } else {
+      setOtherDepartment("")
+      setFormValues((prev) => ({ ...prev, department: value }))
+    }
+  }
+
+  const handleOtherDepartmentChange = (value: string) => {
+    setOtherDepartment(value)
+    setFormValues((prev) => ({ ...prev, department: value }))
+  }
+
   const handleSubmit = () => {
     setAlert(null)
 
-    const requiredFields: (keyof typeof formValues)[] = ["title", "type", "startDate", "endDate", "leadAuditor"]
+    const requiredFields: (keyof typeof formValues)[] = ["title", "type", "department", "startDate", "endDate", "leadAuditor"]
     const missing = requiredFields.filter((field) => !formValues[field])
 
     if (missing.length > 0) {
       setAlert({
         type: "error",
-        message: "Please complete the title, type, lead auditor, and scheduling fields before creating an audit."
+        message: "Please select a department and complete the title, type, lead auditor, and scheduling fields before creating an audit."
       })
       return
     }
@@ -158,7 +177,7 @@ export default function AuditsPage() {
       id: `AUD-${new Date().getFullYear()}-${Math.floor(Math.random() * 900 + 100).toString()}`,
       title: formValues.title,
       type: formValues.type,
-      department: formValues.departments || "Pending assignment",
+      department: formValues.department,
       startDate: formValues.startDate,
       endDate: formValues.endDate,
       status: "Scheduled",
@@ -174,6 +193,8 @@ export default function AuditsPage() {
     setActiveTab("overview")
     setFormValues(() => ({ ...INITIAL_AUDIT_FORM }))
     setNotifyTeam(() => ({ ...DEFAULT_NOTIFY_TEAM }))
+    setDepartmentSelection("")
+    setOtherDepartment("")
   }
 
   return (
@@ -342,13 +363,31 @@ export default function AuditsPage() {
                       </Select>
                     </div>
                     <div className="space-y-2 md:col-span-2">
-                      <Label htmlFor="departments">Department(s)</Label>
-                      <Input
-                        id="departments"
-                        placeholder="Compliance, IT Security"
-                        value={formValues.departments}
-                        onChange={(event) => handleChange("departments", event.target.value)}
-                      />
+                      <Label htmlFor="department">Department</Label>
+                      <Select
+                        value={departmentSelection || undefined}
+                        onValueChange={handleDepartmentSelect}
+                      >
+                        <SelectTrigger id="department" className="w-full">
+                          <SelectValue placeholder="Select department" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {DEPARTMENT_OPTIONS.map((department) => (
+                            <SelectItem key={department} value={department}>
+                              {department}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {departmentSelection === OTHER_DEPARTMENT_VALUE && (
+                        <Input
+                          id="department-other"
+                          placeholder="Enter department"
+                          value={otherDepartment}
+                          onChange={(event) => handleOtherDepartmentChange(event.target.value)}
+                          className="mt-2"
+                        />
+                      )}
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="framework">Compliance Frameworks</Label>
