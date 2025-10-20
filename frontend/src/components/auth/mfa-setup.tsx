@@ -22,6 +22,7 @@ import {
   QrCode
 } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
+import { useSettings } from '@/contexts/settings-context';
 import axios from 'axios';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://comply-x.onrender.com';
@@ -51,6 +52,9 @@ export function MFASetup() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const { user } = useAuth();
+  const { security } = useSettings();
+
+  const canManageMfa = security.allowMfaEnrollment || mfaStatus.enabled;
 
   useEffect(() => {
     fetchMFAStatus();
@@ -221,7 +225,7 @@ export function MFASetup() {
           </Button>
           <Button
             onClick={mfaStatus.enabled ? handleDisableMFA : handleStartSetup}
-            disabled={!formData.password || isLoading}
+            disabled={!formData.password || isLoading || (!security.allowMfaEnrollment && !mfaStatus.enabled)}
             className="flex-1"
             variant={mfaStatus.enabled ? "destructive" : "default"}
           >
@@ -479,10 +483,21 @@ export function MFASetup() {
           )}
         </div>
 
+        {!security.allowMfaEnrollment && !mfaStatus.enabled && (
+          <Alert className="border-yellow-200 bg-yellow-50 text-yellow-900">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              MFA enrollment is currently disabled by your administrator. Enablement options will appear once the security
+              setting is turned on in Company Settings.
+            </AlertDescription>
+          </Alert>
+        )}
+
         <Dialog open={isSetupOpen} onOpenChange={setIsSetupOpen}>
           <DialogTrigger asChild>
-            <Button 
+            <Button
               variant={mfaStatus.enabled ? "destructive" : "default"}
+              disabled={!canManageMfa}
               onClick={() => {
                 setIsSetupOpen(true);
                 resetForm();

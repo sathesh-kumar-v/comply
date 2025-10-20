@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Card } from '@/components/ui/card';
@@ -42,7 +42,7 @@ interface AIInsight {
   highlights: { label: string; value: string; status: 'info' | 'warning' | 'success' | 'danger' }[];
 }
 
-export default function ResponseManagementPage() {
+function ResponseManagementContent() {
   const params = useSearchParams();
   const questionnaireId = params.get('questionnaireId') || '1';
 
@@ -376,5 +376,13 @@ export default function ResponseManagementPage() {
         </div>
       </div>
     </DashboardLayout>
+  );
+}
+
+export default function ResponseManagementPage() {
+  return (
+    <Suspense fallback={<div className="p-6">Loading responses...</div>}>
+      <ResponseManagementContent />
+    </Suspense>
   );
 }

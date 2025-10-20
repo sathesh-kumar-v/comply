@@ -32,10 +32,12 @@ import {
   Loader2
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { fetchDashboardData, transformDocumentStatusForChart, calculateDocumentTrends, type DashboardData } from '@/lib/dashboard'
 
 export function EnhancedDashboard() {
   const { user } = useAuth()
+  const router = useRouter()
   const [selectedTimeframe, setSelectedTimeframe] = useState('7d')
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -309,8 +311,7 @@ export function EnhancedDashboard() {
   }
 
   const handleStatClick = (href: string) => {
-    // In a real app, this would navigate to the appropriate page
-    console.log(`Navigate to: ${href}`)
+    router.push(href)
   }
 
   return (
@@ -723,50 +724,50 @@ export function EnhancedDashboard() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-4">
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               className="h-24 flex-col space-y-2 border-blue-200 hover:border-blue-300 hover:bg-blue-50"
-              onClick={() => console.log('Navigate to /documents/new')}
+              onClick={() => router.push('/documents')}
             >
               <FileText className="h-6 w-6 text-blue-600" />
               <span className="text-sm">New Document</span>
             </Button>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               className="h-24 flex-col space-y-2 border-purple-200 hover:border-purple-300 hover:bg-purple-50"
-              onClick={() => console.log('Navigate to /audits/new')}
+              onClick={() => router.push('/audits?intent=create')}
             >
               <Shield className="h-6 w-6 text-purple-600" />
               <span className="text-sm">Start Audit</span>
             </Button>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               className="h-24 flex-col space-y-2 border-red-200 hover:border-red-300 hover:bg-red-50"
-              onClick={() => console.log('Navigate to /incidents/new')}
+              onClick={() => router.push('/incidents?intent=report')}
             >
               <AlertTriangle className="h-6 w-6 text-red-600" />
               <span className="text-sm">Report Incident</span>
             </Button>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               className="h-24 flex-col space-y-2 border-green-200 hover:border-green-300 hover:bg-green-50"
-              onClick={() => console.log('Navigate to /assignments')}
+              onClick={() => router.push('/corrective-actions')}
             >
               <Target className="h-6 w-6 text-green-600" />
               <span className="text-sm">View Tasks</span>
             </Button>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               className="h-24 flex-col space-y-2 border-indigo-200 hover:border-indigo-300 hover:bg-indigo-50"
-              onClick={() => console.log('Navigate to /calendar')}
+              onClick={() => router.push('/calendar?intent=new-event')}
             >
               <Calendar className="h-6 w-6 text-indigo-600" />
               <span className="text-sm">Schedule Event</span>
             </Button>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               className="h-24 flex-col space-y-2 border-gray-200 hover:border-gray-300 hover:bg-gray-50"
-              onClick={() => console.log('Navigate to /settings')}
+              onClick={() => router.push('/settings')}
             >
               <Settings className="h-6 w-6 text-gray-600" />
               <span className="text-sm">Settings</span>

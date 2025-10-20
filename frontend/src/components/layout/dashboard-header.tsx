@@ -115,13 +115,13 @@ export function DashboardHeader({ onMenuClick }: DashboardHeaderProps) {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => alert('Create Document coming soon!')}>
+            <DropdownMenuItem onClick={() => router.push('/documents')}>
               📄 Create Document
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => alert('New Audit coming soon!')}>
+            <DropdownMenuItem onClick={() => router.push('/audits?intent=create')}>
               🛡️ Start New Audit
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => alert('Report Incident coming soon!')}>
+            <DropdownMenuItem onClick={() => router.push('/incidents?intent=report')}>
               🚨 Report Incident
             </DropdownMenuItem>
             <DropdownMenuSeparator />

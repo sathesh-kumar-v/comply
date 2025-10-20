@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -10,7 +10,9 @@ import { Eye, EyeOff, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Separator } from '@/components/ui/separator'
 import { useAuth } from '@/contexts/auth-context'
+import { useSettings } from '@/contexts/settings-context'
 
 // Updated schema to accept either username or email
 const loginSchema = z.object({
@@ -32,7 +34,8 @@ interface LoginFormProps {}
 export function LoginForm() {
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
-  const { login } = useAuth()
+  const { login, loginWithOAuth } = useAuth()
+  const { security } = useSettings()
   const router = useRouter()
 
   const {
@@ -47,6 +50,9 @@ export function LoginForm() {
   // Watch the identifier field to determine if it's an email or username
   const identifierValue = watch('identifier')
   const isEmail = identifierValue && identifierValue.includes('@')
+
+  const [socialError, setSocialError] = useState('')
+  const [isSocialLoading, setIsSocialLoading] = useState(false)
 
   const onSubmit = async (data: LoginFormData) => {
     try {
@@ -68,9 +74,71 @@ export function LoginForm() {
     }
   }
 
+  const handleGoogleLogin = async () => {
+    if (!security.googleOAuthEnabled) return
+    setSocialError('')
+    setError('')
+    const email = typeof window !== 'undefined'
+      ? window.prompt('Enter your Google Workspace email to continue with Google Sign-In')?.trim()
+      : ''
+    if (!email) {
+      setSocialError('Google sign-in cancelled before email confirmation.')
+      return
+    }
+    setIsSocialLoading(true)
+    try {
+      const [givenName = '', familyName = ''] = email.split('@')[0].split('.')
+      await loginWithOAuth('google', {
+        email,
+        given_name: givenName ? givenName.charAt(0).toUpperCase() + givenName.slice(1) : undefined,
+        family_name: familyName ? familyName.charAt(0).toUpperCase() + familyName.slice(1) : undefined,
+      })
+      router.push('/dashboard')
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.detail || err.message || 'Unable to sign in with Google right now.'
+      setSocialError(errorMessage)
+    } finally {
+      setIsSocialLoading(false)
+    }
+  }
+
   return (
     <div className="w-full">
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      {security.googleOAuthEnabled && (
+        <div className="space-y-3">
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full border border-gray-200"
+            onClick={handleGoogleLogin}
+            disabled={isSocialLoading}
+          >
+            {isSocialLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Connecting to Google...
+              </>
+            ) : (
+              'Continue with Google'
+            )}
+          </Button>
+          <Button type="button" variant="outline" className="w-full" disabled>
+            Continue with Microsoft
+          </Button>
+          {socialError && (
+            <div className="rounded-md bg-red-50 p-3 text-sm text-red-600">
+              {socialError}
+            </div>
+          )}
+          <div className="flex items-center space-x-3 py-1">
+            <Separator className="flex-1" />
+            <span className="text-xs uppercase text-muted-foreground">or</span>
+            <Separator className="flex-1" />
+          </div>
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 pt-4">
         <div className="space-y-2">
           <Label htmlFor="identifier">Username or Email</Label>
           <Input

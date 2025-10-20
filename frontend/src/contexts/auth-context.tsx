@@ -7,6 +7,7 @@ interface AuthContextType {
   user: User | null
   loading: boolean
   login: (credentials: LoginCredentials) => Promise<void>
+  loginWithOAuth: (provider: 'google' | 'microsoft', payload?: Record<string, unknown>) => Promise<void>
   register: (userData: RegisterData) => Promise<void>
   logout: () => void
   isAuthenticated: boolean
@@ -59,6 +60,21 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }
 
+  const loginWithOAuth = async (
+    provider: 'google' | 'microsoft',
+    payload: Record<string, unknown> = {}
+  ) => {
+    setLoading(true)
+    try {
+      const authResponse = await authService.loginWithOAuth(provider, payload)
+      setUser(authResponse.user)
+    } catch (error) {
+      throw error
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const register = async (userData: RegisterData) => {
     setLoading(true)
     try {
@@ -81,6 +97,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     user,
     loading,
     login,
+    loginWithOAuth,
     register,
     logout,
     isAuthenticated: !!user,

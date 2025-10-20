@@ -13,11 +13,12 @@ import io
 import base64
 
 from database import get_db
-from models import User, UserRole, PasswordResetToken, MFAMethod
+from models import User, UserRole, PasswordResetToken, MFAMethod, PermissionLevel
 from schemas import (
     UserCreate, UserLogin, Token, UserResponse, TokenData,
-    PasswordResetRequest, PasswordResetConfirm, MFASetupRequest, 
-    MFASetupResponse, MFAVerifyRequest, MFALoginRequest, MFAStatusResponse
+    PasswordResetRequest, PasswordResetConfirm, MFASetupRequest,
+    MFASetupResponse, MFAVerifyRequest, MFALoginRequest, MFAStatusResponse,
+    GoogleOAuthRequest
 )
 from email_service import email_service
 import os
@@ -80,6 +81,15 @@ for _alias, _roles in {
     },
 }.items():
     _ROLE_ALIAS_MAP.setdefault(_normalize_role_name(_alias), set()).update(_roles)
+
+ROLE_PERMISSION_DEFAULT = {
+    UserRole.SUPER_ADMIN: PermissionLevel.SUPER_ADMIN,
+    UserRole.ADMIN: PermissionLevel.ADMIN_ACCESS,
+    UserRole.MANAGER: PermissionLevel.EDIT_ACCESS,
+    UserRole.AUDITOR: PermissionLevel.EDIT_ACCESS,
+    UserRole.EMPLOYEE: PermissionLevel.VIEW_ONLY,
+    UserRole.VIEWER: PermissionLevel.VIEW_ONLY,
+}
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
@@ -292,6 +302,70 @@ async def login(user_credentials: UserLogin, db: Session = Depends(get_db)):
         user=UserResponse.model_validate(user)
     )
 
+
+@router.post(
+    "/oauth/google",
+    response_model=Token,
+    summary="Authenticate via Google OAuth",
+    description="Create or update a user using Google OAuth profile information."
+)
+async def oauth_google_login(
+    payload: GoogleOAuthRequest,
+    db: Session = Depends(get_db)
+):
+    if not payload.email:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Google account email is required")
+
+    email = payload.email.lower()
+    user = get_user_by_email(db, email)
+
+    if not user:
+        username_base = email.split("@")[0]
+        username_candidate = username_base
+        suffix = 1
+        while get_user_by_username(db, username_candidate):
+            username_candidate = f"{username_base}{suffix}"
+            suffix += 1
+
+        first_name = payload.given_name or username_base.capitalize()
+        last_name = payload.family_name or email.split("@")[1].split(".")[0].capitalize()
+
+        user = User(
+            email=email,
+            username=username_candidate,
+            first_name=first_name,
+            last_name=last_name,
+            hashed_password=get_password_hash(secrets.token_urlsafe(16)),
+            role=UserRole.EMPLOYEE,
+            permission_level=ROLE_PERMISSION_DEFAULT.get(UserRole.EMPLOYEE, PermissionLevel.VIEW_ONLY),
+            is_active=True,
+            is_verified=True,
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is disabled")
+
+    user.permission_level = ROLE_PERMISSION_DEFAULT.get(user.role, PermissionLevel.VIEW_ONLY)
+    user.last_login = datetime.utcnow()
+    db.commit()
+    db.refresh(user)
+
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.username},
+        expires_delta=access_token_expires
+    )
+
+    return Token(
+        access_token=access_token,
+        token_type="bearer",
+        expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        user=UserResponse.model_validate(user)
+    )
+
 @router.get("/me", 
             response_model=UserResponse,
             summary="Get Current User",
@@ -313,7 +387,7 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
                 403: {"description": "Insufficient permissions"},
             })
 async def get_users(
-    current_user: User = Depends(require_role([UserRole.ADMIN, UserRole.MANAGER])),
+    current_user: User = Depends(require_role([UserRole.ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN])),
     db: Session = Depends(get_db)
 ):
     users = db.query(User).all()

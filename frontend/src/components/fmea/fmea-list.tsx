@@ -195,7 +195,7 @@ export function FMEAList({
                         <DropdownMenuItem onClick={() => navigator.clipboard.writeText(record.scope)}>
                           Copy Scope
                         </DropdownMenuItem>
-                        <DropdownMenuItem disabled>Edit (coming soon)</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => onSelect(record)}>Edit Details</DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
