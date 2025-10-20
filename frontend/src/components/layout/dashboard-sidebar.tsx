@@ -56,6 +56,7 @@ export function DashboardSidebar({ className, isOpen = false, onClose }: Dashboa
 
   const getRoleColor = (role: string) => {
     switch (role) {
+      case 'super_admin':
       case 'admin': return 'bg-red-100 text-red-800'
       case 'manager': return 'bg-green-100 text-green-800'
       case 'auditor': return 'bg-purple-100 text-purple-800'
@@ -135,24 +136,14 @@ export function DashboardSidebar({ className, isOpen = false, onClose }: Dashboa
     // }
   ]
 
-  const visibleItems = sidebarItems.filter(item => 
-    !item.adminOnly || user.role === 'admin' || user.role === 'manager'
+  const visibleItems = sidebarItems.filter(item =>
+    !item.adminOnly || user.role === 'admin' || user.role === 'manager' || user.role === 'super_admin'
   )
 
-  const handleItemClick = (href: string, title: string) => {
-    if (
-      href === '/dashboard' ||
-      href === '/documents' ||
-      href === '/questionnaires' ||
-      href === '/settings' ||
-      href === '/calendar' ||
-      href === '/fmea'
-    ) {
-      // Navigate to implemented pages
-      router.push(href)
-    } else {
-      alert(`${title} module coming soon!`)
-    }
+  const displayRole = user.role.replace(/_/g, ' ')
+
+  const handleItemClick = (href: string) => {
+    router.push(href)
   }
 
   return (
@@ -187,7 +178,7 @@ export function DashboardSidebar({ className, isOpen = false, onClose }: Dashboa
               {user.first_name} {user.last_name}
             </p>
             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getRoleColor(user.role)}`}>
-              {user.role.charAt(0).toUpperCase() + user.role.slice(1)}
+              {displayRole.charAt(0).toUpperCase() + displayRole.slice(1)}
             </span>
           </div>
         </div>
@@ -207,7 +198,7 @@ export function DashboardSidebar({ className, isOpen = false, onClose }: Dashboa
                   ? "bg-green-100 text-primary border-green-200" 
                   : "text-gray-700 hover:bg-green-50 hover:text-primary"
               )}
-              onClick={() => handleItemClick(item.href, item.title)}
+              onClick={() => handleItemClick(item.href)}
             >
               <item.icon className={cn("mr-3 h-4 w-4", item.color)} />
               <span className="truncate">{item.title}</span>

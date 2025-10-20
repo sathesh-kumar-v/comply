@@ -102,7 +102,8 @@ export function DocumentEditorEnhanced({
   onSave, 
   onDownload 
 }: DocumentEditorEnhancedProps) {
-  const [activeTab, setActiveTab] = useState('view')
+  type EditorTab = 'view' | 'metadata' | 'content' | 'file'
+  const [activeTab, setActiveTab] = useState<EditorTab>('view')
   const [isSaving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
@@ -353,7 +354,11 @@ export function DocumentEditorEnhanced({
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+        <Tabs
+          value={activeTab}
+          onValueChange={(value) => setActiveTab(value as EditorTab)}
+          className="space-y-4"
+        >
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="view" className="flex items-center gap-2">
               <Eye className="h-4 w-4" />

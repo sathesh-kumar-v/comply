@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/contexts/auth-context";
+import { SettingsProvider } from "@/contexts/settings-context";
 
 // Using system fonts as fallback to avoid build issues with Google Fonts
 const fontVariables = {
@@ -28,9 +29,11 @@ export default function RootLayout({
         } as React.CSSProperties}
         suppressHydrationWarning={true}
       >
-        <AuthProvider>
-          {children}
-        </AuthProvider>
+        <SettingsProvider>
+          <AuthProvider>
+            {children}
+          </AuthProvider>
+        </SettingsProvider>
       </body>
     </html>
   );

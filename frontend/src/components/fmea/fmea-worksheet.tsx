@@ -1,6 +1,7 @@
 "use client"
 
 import { useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import {
   FMEARecord,
   FMEAItemRecord,
@@ -136,6 +137,7 @@ export function FMEAWorksheet({
   loading,
   onRefresh
 }: WorksheetProps) {
+  const router = useRouter()
   const teamLookup = useMemo(() => {
     const map = new Map<number, string>()
     teamOptions.forEach((option) => map.set(option.id, option.full_name))
@@ -162,6 +164,14 @@ export function FMEAWorksheet({
   const [causeEffectInsight, setCauseEffectInsight] = useState<CauseEffectInsight | null>(null)
   const [controlEffectiveness, setControlEffectiveness] = useState<ControlEffectivenessInsight[]>([])
   const [forecastInsight, setForecastInsight] = useState<RPNForecastInsight[]>([])
+
+  const handleLinkToRiskAssessment = (itemId: number) => {
+    router.push(`/risk-assessment?intent=create&source=fmea&item=${itemId}`)
+  }
+
+  const handleAddEvidence = (itemId: number) => {
+    router.push(`/documents?intent=new-document&fmeaItem=${itemId}`)
+  }
 
   const openCreateItem = () => {
     setEditingItem(null)
@@ -619,8 +629,8 @@ export function FMEAWorksheet({
                             >
                               Duplicate Row
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => alert('Risk assessment link coming soon.')}>Link to Risk Assessment</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => alert('Evidence management coming soon.')}>Add Evidence</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleLinkToRiskAssessment(item.id)}>Link to Risk Assessment</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleAddEvidence(item.id)}>Add Evidence</DropdownMenuItem>
                             <DropdownMenuItem className="text-red-600" onClick={() => handleDeleteItem(item)}>
                               Delete
                             </DropdownMenuItem>

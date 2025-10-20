@@ -25,7 +25,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { api } from '@/lib/api'
 import type { User } from '@/lib/auth'
 
-const CREATION_ALLOWED_ROLES: User['role'][] = ['admin', 'manager']
+const CREATION_ALLOWED_ROLES: User['role'][] = ['super_admin', 'admin', 'manager']
 
 export default function FMEAPage() {
   const { user } = useAuth()

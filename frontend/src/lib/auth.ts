@@ -13,7 +13,8 @@ export interface User {
   username: string
   first_name: string
   last_name: string
-  role: 'admin' | 'manager' | 'auditor' | 'employee' | 'viewer'
+  role: 'super_admin' | 'admin' | 'manager' | 'auditor' | 'employee' | 'viewer'
+  permission_level: 'view_only' | 'link_access' | 'edit_access' | 'admin_access' | 'super_admin'
   is_active: boolean
   is_verified: boolean
   created_at: string
@@ -93,6 +94,13 @@ class AuthService {
   async login(credentials: LoginCredentials): Promise<AuthResponse> {
     const endpoint = credentials.mfa_code ? '/auth/mfa/login' : '/auth/login'
     const response = await this.apiClient.post(endpoint, credentials)
+    const authData = response.data
+    this.setToken(authData.access_token)
+    return authData
+  }
+
+  async loginWithOAuth(provider: 'google' | 'microsoft', payload: Record<string, unknown> = {}): Promise<AuthResponse> {
+    const response = await this.apiClient.post(`/auth/oauth/${provider}`, payload)
     const authData = response.data
     this.setToken(authData.access_token)
     return authData

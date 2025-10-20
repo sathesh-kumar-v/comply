@@ -4,6 +4,7 @@ from typing import Optional, List, Union, Dict, Any, Literal
 from datetime import datetime, date
 from models import (
     UserRole,
+    PermissionLevel,
     DocumentStatus,
     DocumentType,
     AccessLevel,
@@ -120,6 +121,7 @@ class UserUpdate(BaseModel):
 class UserResponse(UserBase):
     id: int
     role: UserRole
+    permission_level: PermissionLevel
     is_active: bool
     is_verified: bool
     created_at: datetime
@@ -180,6 +182,13 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     username: Optional[str] = None
+
+
+class GoogleOAuthRequest(BaseModel):
+    id_token: Optional[str] = None
+    email: Optional[EmailStr] = None
+    given_name: Optional[str] = None
+    family_name: Optional[str] = None
 
 # Permission schemas
 class PermissionBase(BaseModel):

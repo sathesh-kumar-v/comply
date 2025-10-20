@@ -7,13 +7,16 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
+import { Switch } from '@/components/ui/switch';
 import { MFASetup } from '@/components/auth/mfa-setup';
 import { User, Shield, Bell, Palette } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
+import { useSettings } from '@/contexts/settings-context';
 
 export default function SettingsPage() {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'notifications' | 'appearance'>('profile');
+  const { security, updateSecurity } = useSettings();
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
@@ -22,7 +25,11 @@ export default function SettingsPage() {
         <p className="text-gray-600">Manage your account settings and preferences</p>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+      <Tabs
+        value={activeTab}
+        onValueChange={(value) => setActiveTab(value as typeof activeTab)}
+        className="space-y-6"
+      >
         <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="profile" className="flex items-center space-x-2">
             <User className="h-4 w-4" />
@@ -110,6 +117,16 @@ export default function SettingsPage() {
                 </div>
               </div>
 
+              <div>
+                <Label htmlFor="permissionLevel">Permission Level</Label>
+                <Input
+                  id="permissionLevel"
+                  defaultValue={user?.permission_level?.replace(/_/g, ' ') || 'View only'}
+                  disabled
+                  className="capitalize"
+                />
+              </div>
+
               <div className="flex justify-end">
                 <Button disabled>
                   Save Changes
@@ -120,6 +137,59 @@ export default function SettingsPage() {
         </TabsContent>
 
         <TabsContent value="security" className="space-y-6">
+          <Card className="p-6">
+            <div className="space-y-4">
+              <div>
+                <h3 className="text-lg font-semibold">Security Controls</h3>
+                <p className="text-sm text-gray-600">
+                  Configure company-wide authentication and identity options
+                </p>
+              </div>
+              <Separator />
+              <div className="space-y-6">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h4 className="font-medium">Allow MFA enrollment</h4>
+                    <p className="text-sm text-gray-500">
+                      When disabled, new MFA registrations are blocked for all users.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={security.allowMfaEnrollment}
+                    onCheckedChange={(checked) => updateSecurity({ allowMfaEnrollment: checked })}
+                    aria-label="Toggle MFA enrollment"
+                  />
+                </div>
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h4 className="font-medium">Require MFA for administrators</h4>
+                    <p className="text-sm text-gray-500">
+                      Admin and super admin accounts will be reminded until MFA is configured.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={security.requireMfaForAdmins}
+                    onCheckedChange={(checked) => updateSecurity({ requireMfaForAdmins: checked })}
+                    aria-label="Toggle administrator MFA requirement"
+                  />
+                </div>
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h4 className="font-medium">Enable Google OAuth</h4>
+                    <p className="text-sm text-gray-500">
+                      Allow users to sign in using corporate Google accounts.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={security.googleOAuthEnabled}
+                    onCheckedChange={(checked) => updateSecurity({ googleOAuthEnabled: checked })}
+                    aria-label="Toggle Google OAuth login"
+                  />
+                </div>
+              </div>
+            </div>
+          </Card>
+
           <Card className="p-6">
             <div className="space-y-4">
               <div>
