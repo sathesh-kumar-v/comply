@@ -15,6 +15,7 @@ import { Separator } from "@/components/ui/separator"
 import { Upload, Activity, AlertOctagon, Timer, CheckCircle2, AlertCircle, X } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { cn } from "@/lib/utils"
+import { DEPARTMENT_OPTIONS, OTHER_DEPARTMENT_VALUE } from "@/constants/departments"
 
 interface IncidentRecord {
   id: string
@@ -111,6 +112,8 @@ export default function IncidentsPage() {
     details: string[]
   } | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const [departmentSelection, setDepartmentSelection] = useState<string>("")
+  const [otherDepartment, setOtherDepartment] = useState<string>("")
 
   const openIncidents = useMemo(() => incidents.filter((incident) => incident.status !== "Resolved"), [incidents])
 
@@ -164,19 +167,36 @@ export default function IncidentsPage() {
     setAttachments((prev) => prev.filter((_, fileIndex) => fileIndex !== index))
   }
 
+  const handleDepartmentSelect = (value: string) => {
+    setDepartmentSelection(value)
+    if (value === OTHER_DEPARTMENT_VALUE) {
+      setOtherDepartment("")
+      setFormValues((prev) => ({ ...prev, department: "" }))
+    } else {
+      setOtherDepartment("")
+      setFormValues((prev) => ({ ...prev, department: value }))
+    }
+  }
+
+  const handleOtherDepartmentChange = (value: string) => {
+    setOtherDepartment(value)
+    setFormValues((prev) => ({ ...prev, department: value }))
+  }
+
   const handleSubmit = () => {
     const trimmedTitle = formValues.title.trim()
     const trimmedType = formValues.type.trim()
     const trimmedDepartment = formValues.department.trim()
 
-    if (!trimmedTitle || !trimmedType) {
+    if (!trimmedTitle || !trimmedType || !trimmedDepartment) {
       setActiveTab("report")
       setSubmissionFeedback({
         type: "error",
         title: "Add required incident details",
         details: [
           !trimmedTitle ? "Provide an incident title." : null,
-          !trimmedType ? "Select an incident type." : null
+          !trimmedType ? "Select an incident type." : null,
+          !trimmedDepartment ? "Choose a department or provide one when selecting Other." : null
         ].filter((detail): detail is string => Boolean(detail))
       })
       return
@@ -196,7 +216,7 @@ export default function IncidentsPage() {
       type: trimmedType,
       severity: formValues.severity,
       status: "Open",
-      department: trimmedDepartment || "Not specified",
+      department: trimmedDepartment,
       reportedOn: dateStamp,
       owner: formValues.notification.trim() || "Unassigned"
     }
@@ -216,6 +236,8 @@ export default function IncidentsPage() {
       severity: prev.severity
     }))
     setAttachments([])
+    setDepartmentSelection("")
+    setOtherDepartment("")
     setActiveTab("dashboard")
   }
 
@@ -389,12 +411,30 @@ export default function IncidentsPage() {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="department">Department</Label>
-                      <Input
-                        id="department"
-                        placeholder="Impacted department"
-                        value={formValues.department}
-                        onChange={(event) => setFormValues((prev) => ({ ...prev, department: event.target.value }))}
-                      />
+                      <Select
+                        value={departmentSelection || undefined}
+                        onValueChange={handleDepartmentSelect}
+                      >
+                        <SelectTrigger id="department" className="w-full">
+                          <SelectValue placeholder="Select department" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {DEPARTMENT_OPTIONS.map((department) => (
+                            <SelectItem key={department} value={department}>
+                              {department}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {departmentSelection === OTHER_DEPARTMENT_VALUE && (
+                        <Input
+                          id="department-other"
+                          placeholder="Enter department"
+                          value={otherDepartment}
+                          onChange={(event) => handleOtherDepartmentChange(event.target.value)}
+                          className="mt-2"
+                        />
+                      )}
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="location">Location</Label>

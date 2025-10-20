@@ -20,6 +20,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge'
 import { Loader2, Sparkles, UsersRound } from 'lucide-react'
 import { api } from '@/lib/api'
+import { DEPARTMENT_OPTIONS, OTHER_DEPARTMENT_VALUE } from '@/constants/departments'
 
 const FMEA_TYPES = [
   'Process FMEA (PFMEA)',
@@ -72,7 +73,8 @@ const steps = [
 export function FMEACreationWizard({ teamOptions, onCreated, initialValues }: WizardProps) {
   const [stepIndex, setStepIndex] = useState(0)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [departmentInput, setDepartmentInput] = useState('')
+  const [departmentSelection, setDepartmentSelection] = useState('')
+  const [departmentOther, setDepartmentOther] = useState('')
   const [selectedMembers, setSelectedMembers] = useState<number[]>([])
   const [memberRoles, setMemberRoles] = useState<Record<number, string>>({})
   const [teamSuggestions, setTeamSuggestions] = useState<TeamAIResponse | null>(null)
@@ -120,10 +122,15 @@ export function FMEACreationWizard({ teamOptions, onCreated, initialValues }: Wi
   }
 
   const addDepartment = () => {
-    const value = departmentInput.trim()
+    const value =
+      departmentSelection === OTHER_DEPARTMENT_VALUE
+        ? departmentOther.trim()
+        : departmentSelection
+
     if (!value || formData.departments.includes(value)) return
     setFormData((prev) => ({ ...prev, departments: [...prev.departments, value] }))
-    setDepartmentInput('')
+    setDepartmentSelection('')
+    setDepartmentOther('')
   }
 
   const removeDepartment = (dept: string) => {
@@ -376,20 +383,48 @@ export function FMEACreationWizard({ teamOptions, onCreated, initialValues }: Wi
             </div>
             <div className="space-y-2">
               <Label>Departments *</Label>
-              <div className="flex gap-2">
-                <Input
-                  value={departmentInput}
-                  onChange={(event) => setDepartmentInput(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      event.preventDefault()
-                      addDepartment()
-                    }
-                  }}
-                  placeholder="e.g., Quality Assurance"
-                  className="border-emerald-100"
-                />
-                <Button type="button" variant="outline" onClick={addDepartment}>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-3">
+                <div className="flex-1">
+                  <Select
+                    value={departmentSelection || undefined}
+                    onValueChange={(value) => {
+                      setDepartmentSelection(value)
+                      if (value !== OTHER_DEPARTMENT_VALUE) {
+                        setDepartmentOther("")
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="border-emerald-100">
+                      <SelectValue placeholder="Select department" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DEPARTMENT_OPTIONS.map((department) => (
+                        <SelectItem key={department} value={department}>
+                          {department}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {departmentSelection === OTHER_DEPARTMENT_VALUE && (
+                  <Input
+                    value={departmentOther}
+                    onChange={(event) => setDepartmentOther(event.target.value)}
+                    placeholder="Enter department"
+                    className="border-emerald-100 sm:flex-1"
+                  />
+                )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={addDepartment}
+                  disabled={
+                    !(
+                      (departmentSelection && departmentSelection !== OTHER_DEPARTMENT_VALUE) ||
+                      (departmentSelection === OTHER_DEPARTMENT_VALUE && departmentOther.trim())
+                    )
+                  }
+                >
                   Add
                 </Button>
               </div>
