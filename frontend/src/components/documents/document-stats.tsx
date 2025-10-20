@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { buildApiUrl, isApiBaseConfigured, getApiBaseUrl } from '@/lib/api-url'
 import { 
   FileText, 
   AlertTriangle, 
@@ -33,7 +34,8 @@ interface DocumentStatsProps {
 export function DocumentStats({ detailed = false }: DocumentStatsProps) {
   const [stats, setStats] = useState<DocumentStatsData | null>(null)
   const [loading, setLoading] = useState(true)
-  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
+  const [showApiWarning, setShowApiWarning] = useState(!isApiBaseConfigured())
+  const apiBaseUrl = getApiBaseUrl()
 
   const fetchStats = async () => {
     try {
@@ -42,8 +44,8 @@ export function DocumentStats({ detailed = false }: DocumentStatsProps) {
         console.error('No authentication token found')
         return
       }
-      
-      const response = await fetch(`${API_BASE_URL}/api/documents/stats/overview`, {
+
+      const response = await fetch(buildApiUrl('/api/documents/stats/overview'), {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -85,11 +87,32 @@ export function DocumentStats({ detailed = false }: DocumentStatsProps) {
 
   if (!stats) {
     return (
-      <Card>
-        <CardContent className="flex items-center justify-center py-8">
-          <p className="text-muted-foreground">Unable to load statistics</p>
-        </CardContent>
-      </Card>
+      <div className="space-y-4">
+        {showApiWarning && (
+          <Card className="border-amber-200 bg-amber-50">
+            <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-4 sm:p-5">
+              <div className="text-sm text-amber-900">
+                NEXT_PUBLIC_API_URL is not configured. Falling back to
+                {' '}
+                <span className="font-medium">{apiBaseUrl || '/api'}</span>
+                {' '}for document statistics.
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowApiWarning(false)}
+                className="text-xs font-medium text-amber-900 underline"
+              >
+                Dismiss
+              </button>
+            </CardContent>
+          </Card>
+        )}
+        <Card>
+          <CardContent className="flex items-center justify-center py-8">
+            <p className="text-muted-foreground">Unable to load statistics</p>
+          </CardContent>
+        </Card>
+      </div>
     )
   }
 
@@ -133,6 +156,26 @@ export function DocumentStats({ detailed = false }: DocumentStatsProps) {
 
   return (
     <div className="space-y-4 sm:space-y-6">
+      {showApiWarning && (
+        <Card className="border-amber-200 bg-amber-50">
+          <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-4 sm:p-5">
+            <div className="text-sm text-amber-900">
+              NEXT_PUBLIC_API_URL is not configured. Using
+              {' '}
+              <span className="font-medium">{apiBaseUrl || '/api'}</span>
+              {' '}for document statistics.
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowApiWarning(false)}
+              className="text-xs font-medium text-amber-900 underline"
+            >
+              Dismiss
+            </button>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Overview Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <Card>

@@ -43,6 +43,7 @@ import {
   FileImage
 } from 'lucide-react'
 import { DocumentViewer } from './document-viewer'
+import { buildApiUrl } from '@/lib/api-url'
 
 const editSchema = z.object({
   title: z.string().min(1, 'Title is required'),
@@ -110,7 +111,6 @@ export function DocumentEditorEnhanced({
   const [reuploadStatus, setReuploadStatus] = useState<'idle' | 'success' | 'error'>('idle')
   const [inlineContent, setInlineContent] = useState('')
   const [isEditingContent, setIsEditingContent] = useState(false)
-  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
 
   const {
     register,
@@ -211,9 +211,10 @@ export function DocumentEditorEnhanced({
         return
       }
 
-      console.log('Loading inline content for document:', document.id, 'from API:', API_BASE_URL)
+      const downloadUrl = buildApiUrl(`/api/documents/${document.id}/download`)
+      console.log('Loading inline content for document:', document.id, 'from:', downloadUrl)
 
-      const response = await fetch(`${API_BASE_URL}/api/documents/${document.id}/download`, {
+      const response = await fetch(downloadUrl, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
 
@@ -251,7 +252,7 @@ export function DocumentEditorEnhanced({
       const token = localStorage.getItem('auth_token')
       if (!token) throw new Error('No auth token')
 
-      const response = await fetch(`${API_BASE_URL}/api/documents/${document.id}/reupload`, {
+      const response = await fetch(buildApiUrl(`/api/documents/${document.id}/reupload`), {
         method: 'PUT',
         headers: { 'Authorization': `Bearer ${token}` },
         body: formData
@@ -312,7 +313,7 @@ export function DocumentEditorEnhanced({
       const token = localStorage.getItem('auth_token')
       if (!token) throw new Error('No auth token')
 
-      const response = await fetch(`${API_BASE_URL}/api/documents/${document.id}/content`, {
+      const response = await fetch(buildApiUrl(`/api/documents/${document.id}/content`), {
         method: 'PUT',
         headers: { 'Authorization': `Bearer ${token}` },
         body: formData

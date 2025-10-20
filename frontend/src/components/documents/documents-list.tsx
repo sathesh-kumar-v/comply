@@ -39,6 +39,7 @@ import {
   X
 } from 'lucide-react'
 import { DocumentEditor } from './document-editor'
+import { buildApiUrl } from '@/lib/api-url'
 
 interface Document {
   id: number
@@ -75,7 +76,6 @@ export function DocumentsList({
 }: DocumentsListProps) {
   const [selectedDocument, setSelectedDocument] = useState<Document | null>(null)
   const [editingDocument, setEditingDocument] = useState<Document | null>(null)
-  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return '0 Bytes'
@@ -136,7 +136,7 @@ export function DocumentsList({
         return
       }
       
-      const response = await fetch(`${API_BASE_URL}/api/documents/${doc.id}/download`, {
+      const response = await fetch(buildApiUrl(`/api/documents/${doc.id}/download`), {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -173,7 +173,7 @@ export function DocumentsList({
         return
       }
       
-      const response = await fetch(`${API_BASE_URL}/api/documents/${editingDocument.id}`, {
+      const response = await fetch(buildApiUrl(`/api/documents/${editingDocument.id}`), {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -207,7 +207,7 @@ export function DocumentsList({
         return
       }
       
-      const response = await fetch(`${API_BASE_URL}/api/documents/${document.id}`, {
+      const response = await fetch(buildApiUrl(`/api/documents/${document.id}`), {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`
