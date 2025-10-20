@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -12,7 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Globe2, AlertTriangle, Upload, CheckCircle2, AlertCircle } from "lucide-react"
+import { Globe2, AlertTriangle, Upload, CheckCircle2, AlertCircle, X } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 interface AssessmentLogEntry {
   id: number
@@ -97,6 +98,9 @@ export default function CountryRiskPage() {
   const [weights, setWeights] = useState({ ...DEFAULT_WEIGHTS })
   const [assessmentLog, setAssessmentLog] = useState<AssessmentLogEntry[]>(INITIAL_ASSESSMENT_LOG)
   const [launchFeedback, setLaunchFeedback] = useState<LaunchFeedback | null>(null)
+  const [attachments, setAttachments] = useState<File[]>([])
+  const [isDragging, setIsDragging] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const highRiskCountries = useMemo(() => countries.filter((item) => item.level === "High" || item.level === "Critical"), [countries])
 
@@ -117,6 +121,52 @@ export default function CountryRiskPage() {
 
   const handleWeightChange = (key: keyof typeof weights, value: number) => {
     setWeights((prev) => ({ ...prev, [key]: value }))
+  }
+
+  const handleFilesSelected = (files: FileList | null) => {
+    if (!files || files.length === 0) {
+      return
+    }
+
+    setIsDragging(false)
+    setAttachments((prev) => {
+      const existingKeys = new Set(prev.map((file) => `${file.name}-${file.size}`))
+      const incoming = Array.from(files).filter((file) => {
+        const key = `${file.name}-${file.size}`
+        if (existingKeys.has(key)) {
+          return false
+        }
+        existingKeys.add(key)
+        return true
+      })
+
+      return [...prev, ...incoming]
+    })
+  }
+
+  const handleAttachmentClick = () => {
+    fileInputRef.current?.click()
+  }
+
+  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    setIsDragging(false)
+    handleFilesSelected(event.dataTransfer.files)
+  }
+
+  const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+  }
+
+  const removeAttachment = (index: number) => {
+    setAttachments((prev) => prev.filter((_, fileIndex) => fileIndex !== index))
+  }
+
+  const handleDropAreaKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault()
+      handleAttachmentClick()
+    }
   }
 
   const handleSubmit = () => {
@@ -145,6 +195,10 @@ export default function CountryRiskPage() {
         : normalizedCountries.length === 1
           ? normalizedCountries[0]
           : `${normalizedCountries[0]} + ${normalizedCountries.length - 1} more`
+    const attachmentSummary =
+      attachments.length === 0
+        ? "No supporting documents attached."
+        : `Attachments: ${attachments.map((file) => file.name).join(", ")}`
 
     const newEntry: AssessmentLogEntry = {
       id: now.valueOf(),
@@ -166,7 +220,8 @@ export default function CountryRiskPage() {
           : "Add operating regions to finalise the scope.",
         `Primary owner: ${owner}.`,
         `Review team: ${formValues.reviewTeam.trim() || "Not specified"}.`,
-        `Updates planned ${formValues.updateFrequency.toLowerCase()}.`
+        `Updates planned ${formValues.updateFrequency.toLowerCase()}.`,
+        attachmentSummary
       ]
     })
 
@@ -176,6 +231,7 @@ export default function CountryRiskPage() {
       assessmentType,
       updateFrequency
     }))
+    setAttachments([])
     setActiveTab("dashboard")
   }
 
@@ -514,10 +570,68 @@ export default function CountryRiskPage() {
                         onChange={(event) => updateFormValue("notes", event.target.value)}
                       />
                     </div>
-                    <div className="flex h-full flex-col justify-center rounded-lg border border-dashed border-blue-200 bg-blue-50/40 p-6 text-center text-sm text-blue-700">
-                      <Upload className="mx-auto h-8 w-8" />
-                      <p className="mt-2 font-medium">Upload briefing decks or intelligence reports</p>
-                      <p className="text-xs">Drag & drop files or browse</p>
+                    <div className="space-y-3">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        multiple
+                        accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.txt,.rtf,.zip,.rar,.7z,.png,.jpg,.jpeg"
+                        className="hidden"
+                        onChange={(event) => {
+                          handleFilesSelected(event.target.files)
+                          event.target.value = ""
+                        }}
+                      />
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        aria-label="Upload supporting documents"
+                        onClick={handleAttachmentClick}
+                        onKeyDown={handleDropAreaKeyDown}
+                        onDrop={handleDrop}
+                        onDragOver={handleDragOver}
+                        onDragEnter={() => setIsDragging(true)}
+                        onDragLeave={(event) => {
+                          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                            setIsDragging(false)
+                          }
+                        }}
+                        className={cn(
+                          "flex h-full min-h-[176px] flex-col justify-center rounded-lg border border-dashed p-6 text-center text-sm transition",
+                          isDragging ? "border-blue-400 bg-blue-50 text-blue-800" : "border-blue-200 bg-blue-50/40 text-blue-700"
+                        )}
+                      >
+                        <Upload className="mx-auto h-8 w-8" />
+                        <p className="mt-2 font-medium">Upload briefing decks or intelligence reports</p>
+                        <p className="text-xs">Drag & drop files or browse</p>
+                      </div>
+                      {attachments.length > 0 && (
+                        <ul className="space-y-2 text-sm">
+                          {attachments.map((file, index) => (
+                            <li
+                              key={`${file.name}-${file.size}-${index}`}
+                              className="flex items-center justify-between rounded-md border border-blue-100 bg-white/60 px-3 py-2 text-blue-900"
+                            >
+                              <span className="truncate pr-2" title={file.name}>
+                                {file.name}
+                              </span>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2 text-blue-700 hover:text-blue-900"
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  removeAttachment(index)
+                                }}
+                              >
+                                <X className="h-4 w-4" aria-hidden="true" />
+                                <span className="sr-only">Remove attachment</span>
+                              </Button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </div>
                   </div>
                 </section>
