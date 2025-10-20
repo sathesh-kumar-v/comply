@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -12,7 +12,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Separator } from "@/components/ui/separator"
-import { Upload, Activity, AlertOctagon, Timer } from "lucide-react"
+import { Upload, Activity, AlertOctagon, Timer, CheckCircle2, AlertCircle, X } from "lucide-react"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { cn } from "@/lib/utils"
 
 interface IncidentRecord {
   id: string
@@ -74,31 +76,41 @@ const SAMPLE_INCIDENTS: IncidentRecord[] = [
   }
 ]
 
+const DEFAULT_FORM_VALUES = {
+  title: "",
+  type: "",
+  department: "",
+  location: "",
+  date: "",
+  time: "",
+  severity: "Medium" as (typeof SEVERITY)[number],
+  impact: "",
+  actions: "",
+  description: "",
+  whatHappened: "",
+  rootCause: "",
+  contributors: "",
+  people: "",
+  witnesses: "",
+  equipment: "",
+  notification: "",
+  escalation: "",
+  external: "",
+  disclosure: "No"
+}
+
 export default function IncidentsPage() {
   const [activeTab, setActiveTab] = useState<"dashboard" | "report">("dashboard")
-  const [incidents] = useState(SAMPLE_INCIDENTS)
-  const [formValues, setFormValues] = useState({
-    title: "",
-    type: "",
-    department: "",
-    location: "",
-    date: "",
-    time: "",
-    severity: "Medium" as (typeof SEVERITY)[number],
-    impact: "",
-    actions: "",
-    description: "",
-    whatHappened: "",
-    rootCause: "",
-    contributors: "",
-    people: "",
-    witnesses: "",
-    equipment: "",
-    notification: "",
-    escalation: "",
-    external: "",
-    disclosure: "No"
-  })
+  const [incidents, setIncidents] = useState<IncidentRecord[]>(SAMPLE_INCIDENTS)
+  const [formValues, setFormValues] = useState({ ...DEFAULT_FORM_VALUES })
+  const [attachments, setAttachments] = useState<File[]>([])
+  const [isDragging, setIsDragging] = useState(false)
+  const [submissionFeedback, setSubmissionFeedback] = useState<{
+    type: "success" | "error"
+    title: string
+    details: string[]
+  } | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const openIncidents = useMemo(() => incidents.filter((incident) => incident.status !== "Resolved"), [incidents])
 
@@ -110,8 +122,101 @@ export default function IncidentsPage() {
     }
   }, [])
 
+  const handleFilesSelected = (files: FileList | null) => {
+    if (!files || files.length === 0) {
+      return
+    }
+
+    setIsDragging(false)
+    setAttachments((prev) => {
+      const existingKeys = new Set(prev.map((file) => `${file.name}-${file.size}`))
+      const incoming = Array.from(files).filter((file) => {
+        const key = `${file.name}-${file.size}`
+        if (existingKeys.has(key)) {
+          return false
+        }
+        existingKeys.add(key)
+        return true
+      })
+
+      return [...prev, ...incoming]
+    })
+  }
+
+  const handleAttachmentClick = () => {
+    fileInputRef.current?.click()
+  }
+
+  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    setIsDragging(false)
+    handleFilesSelected(event.dataTransfer.files)
+  }
+
+  const handleDropAreaKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault()
+      handleAttachmentClick()
+    }
+  }
+
+  const removeAttachment = (index: number) => {
+    setAttachments((prev) => prev.filter((_, fileIndex) => fileIndex !== index))
+  }
+
   const handleSubmit = () => {
-    console.log("Incident submitted", formValues)
+    const trimmedTitle = formValues.title.trim()
+    const trimmedType = formValues.type.trim()
+    const trimmedDepartment = formValues.department.trim()
+
+    if (!trimmedTitle || !trimmedType) {
+      setActiveTab("report")
+      setSubmissionFeedback({
+        type: "error",
+        title: "Add required incident details",
+        details: [
+          !trimmedTitle ? "Provide an incident title." : null,
+          !trimmedType ? "Select an incident type." : null
+        ].filter((detail): detail is string => Boolean(detail))
+      })
+      return
+    }
+
+    const now = new Date()
+    const dateStamp = now.toISOString().slice(0, 10)
+    const sequence = String(now.getTime()).slice(-5)
+    const attachmentSummary =
+      attachments.length === 0
+        ? "No evidence attached."
+        : `Attachments: ${attachments.map((file) => file.name).join(", ")}`
+
+    const newIncident: IncidentRecord = {
+      id: `INC-${now.getFullYear()}-${sequence}`,
+      title: trimmedTitle,
+      type: trimmedType,
+      severity: formValues.severity,
+      status: "Open",
+      department: trimmedDepartment || "Not specified",
+      reportedOn: dateStamp,
+      owner: formValues.notification.trim() || "Unassigned"
+    }
+
+    setIncidents((prev) => [newIncident, ...prev])
+    setSubmissionFeedback({
+      type: "success",
+      title: "Incident submitted",
+      details: [
+        `${newIncident.id} logged with ${formValues.severity.toLowerCase()} severity.`,
+        `Department: ${newIncident.department}.`,
+        attachmentSummary
+      ]
+    })
+    setFormValues((prev) => ({
+      ...DEFAULT_FORM_VALUES,
+      severity: prev.severity
+    }))
+    setAttachments([])
+    setActiveTab("dashboard")
   }
 
   return (
@@ -123,6 +228,44 @@ export default function IncidentsPage() {
             Capture, triage, and resolve incidents with automated escalation paths.
           </p>
         </div>
+
+        {submissionFeedback && (
+          <Alert
+            className={
+              submissionFeedback.type === "success"
+                ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+                : "border-red-200 bg-red-50 text-red-900"
+            }
+          >
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex items-start gap-3">
+                {submissionFeedback.type === "success" ? (
+                  <CheckCircle2 className="mt-1 h-5 w-5 text-emerald-600" />
+                ) : (
+                  <AlertCircle className="mt-1 h-5 w-5 text-red-600" />
+                )}
+                <div>
+                  <AlertTitle>{submissionFeedback.title}</AlertTitle>
+                  <AlertDescription>
+                    <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
+                      {submissionFeedback.details.map((detail) => (
+                        <li key={detail}>{detail}</li>
+                      ))}
+                    </ul>
+                  </AlertDescription>
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSubmissionFeedback(null)}
+                className="self-end sm:self-start"
+              >
+                Dismiss
+              </Button>
+            </div>
+          </Alert>
+        )}
 
         <Tabs
           value={activeTab}
@@ -408,10 +551,68 @@ export default function IncidentsPage() {
                         onChange={(event) => setFormValues((prev) => ({ ...prev, equipment: event.target.value }))}
                       />
                     </div>
-                    <div className="flex h-full flex-col justify-center rounded-lg border border-dashed border-red-200 bg-red-50/60 p-6 text-center text-sm text-red-700">
-                      <Upload className="mx-auto h-8 w-8" />
-                      <p className="mt-2 font-medium">Upload evidence, photos or documents</p>
-                      <p className="text-xs">Supported formats: images, video, documents</p>
+                    <div className="space-y-3">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        multiple
+                        accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.rtf,.csv,.jpg,.jpeg,.png,.gif,.zip,.rar,.7z,.mp4,.mov,.avi"
+                        className="hidden"
+                        onChange={(event) => {
+                          handleFilesSelected(event.target.files)
+                          event.target.value = ""
+                        }}
+                      />
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        aria-label="Upload incident evidence"
+                        onClick={handleAttachmentClick}
+                        onKeyDown={handleDropAreaKeyDown}
+                        onDrop={handleDrop}
+                        onDragOver={(event) => event.preventDefault()}
+                        onDragEnter={() => setIsDragging(true)}
+                        onDragLeave={(event) => {
+                          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                            setIsDragging(false)
+                          }
+                        }}
+                        className={cn(
+                          "flex h-full min-h-[176px] flex-col justify-center rounded-lg border border-dashed p-6 text-center text-sm transition",
+                          isDragging ? "border-red-400 bg-red-50 text-red-800" : "border-red-200 bg-red-50/60 text-red-700"
+                        )}
+                      >
+                        <Upload className="mx-auto h-8 w-8" />
+                        <p className="mt-2 font-medium">Upload evidence, photos or documents</p>
+                        <p className="text-xs">Supported formats: images, video, documents</p>
+                      </div>
+                      {attachments.length > 0 && (
+                        <ul className="space-y-2 text-sm">
+                          {attachments.map((file, index) => (
+                            <li
+                              key={`${file.name}-${file.size}-${index}`}
+                              className="flex items-center justify-between rounded-md border border-red-100 bg-white/60 px-3 py-2 text-red-900"
+                            >
+                              <span className="truncate pr-2" title={file.name}>
+                                {file.name}
+                              </span>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2 text-red-700 hover:text-red-900"
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  removeAttachment(index)
+                                }}
+                              >
+                                <X className="h-4 w-4" aria-hidden="true" />
+                                <span className="sr-only">Remove attachment</span>
+                              </Button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </div>
                   </div>
                 </section>
