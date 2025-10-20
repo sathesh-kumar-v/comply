@@ -26,6 +26,7 @@ import {
   AlertCircle
 } from 'lucide-react'
 import { StatusWorkflowHelp } from './status-workflow-help'
+import { buildApiUrl, isApiBaseConfigured, getApiBaseUrl } from '@/lib/api-url'
 
 interface DuplicateMatch {
   id: number
@@ -69,14 +70,8 @@ export function DocumentUpload({ onUploadSuccess }: DocumentUploadProps) {
   const [aiConfidence, setAiConfidence] = useState<number | null>(null)
   const [aiSummary, setAiSummary] = useState<string | null>(null)
   const [duplicateMatches, setDuplicateMatches] = useState<DuplicateMatch[]>([])
-  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '')
-
-  const buildApiUrl = (path: string) => {
-    if (!path.startsWith('/')) {
-      return API_BASE_URL ? `${API_BASE_URL}/${path}` : `/${path}`
-    }
-    return API_BASE_URL ? `${API_BASE_URL}${path}` : path
-  }
+  const [showApiWarning, setShowApiWarning] = useState(!isApiBaseConfigured())
+  const apiBaseUrl = getApiBaseUrl()
 
   const {
     register,
@@ -367,6 +362,33 @@ export function DocumentUpload({ onUploadSuccess }: DocumentUploadProps) {
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 sm:space-y-6">
+      {showApiWarning && (
+        <Card className="border-amber-200 bg-amber-50">
+          <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-4 sm:p-5">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="mt-1 h-5 w-5 text-amber-600" />
+              <div>
+                <p className="text-sm font-medium text-amber-900">Using default API endpoint</p>
+                <p className="text-xs text-amber-800">
+                  NEXT_PUBLIC_API_URL is not configured. Requests will be sent to
+                  {' '}
+                  <span className="font-medium">{apiBaseUrl || '/api'}</span>.
+                  {' '}Update the environment variable to remove this message.
+                </p>
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setShowApiWarning(false)}
+            >
+              Got it
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       {/* File Upload Area */}
       <div className="space-y-4">
         <Label htmlFor="file-upload">Document File</Label>

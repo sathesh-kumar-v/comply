@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/select'
 import { Card, CardContent } from '@/components/ui/card'
 import { Search, Filter, X, Calendar, Sparkles, Loader2 } from 'lucide-react'
+import { buildApiUrl, isApiBaseConfigured, getApiBaseUrl } from '@/lib/api-url'
 
 interface DocumentAISearchPlan {
   refined_query?: string
@@ -64,7 +65,8 @@ export function DocumentSearch({ onSearch, searchParams, advanced = false, onAIS
   const [showAdvanced, setShowAdvanced] = useState(advanced)
   const [aiLoading, setAiLoading] = useState(false)
   const [aiError, setAiError] = useState<string | null>(null)
-  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
+  const [showApiWarning, setShowApiWarning] = useState(!isApiBaseConfigured())
+  const apiBaseUrl = getApiBaseUrl()
 
   const documentTypes = [
     { value: 'all', label: 'All Types' },
@@ -207,7 +209,7 @@ export function DocumentSearch({ onSearch, searchParams, advanced = false, onAIS
     onAIStart?.()
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/documents/ai/search`, {
+      const response = await fetch(buildApiUrl('/api/documents/ai/search'), {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -243,8 +245,28 @@ export function DocumentSearch({ onSearch, searchParams, advanced = false, onAIS
   }
 
   return (
-    <Card>
-      <CardContent className="p-4 space-y-4">
+    <div className="space-y-4">
+      {showApiWarning && (
+        <Card className="border-amber-200 bg-amber-50">
+          <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-4 sm:p-5">
+            <div className="text-sm text-amber-900">
+              NEXT_PUBLIC_API_URL is not configured. AI search requests will use
+              {' '}
+              <span className="font-medium">{apiBaseUrl || '/api'}</span>.
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowApiWarning(false)}
+              className="text-xs font-medium text-amber-900 underline"
+            >
+              Dismiss
+            </button>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card>
+        <CardContent className="p-4 space-y-4">
         {/* Quick Search */}
         <div className="flex space-x-2">
           <div className="flex-1 relative">
@@ -471,7 +493,8 @@ export function DocumentSearch({ onSearch, searchParams, advanced = false, onAIS
             </div>
           </div>
         )}
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+    </div>
   )
 }
