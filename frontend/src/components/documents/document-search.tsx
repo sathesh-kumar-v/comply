@@ -115,9 +115,29 @@ export function DocumentSearch({ onSearch, searchParams, advanced = false, onAIS
   }, [searchParams])
 
   const handleParamChange = (key: string, value: string | boolean | undefined) => {
-    // Convert 'all' values to undefined for filtering
-    const processedValue = value === 'all' ? undefined : value
-    setLocalParams(prev => ({ ...prev, [key]: processedValue }))
+    const processedValue = typeof value === 'string'
+      ? value.trim() === '' || value === 'all'
+        ? undefined
+        : value
+      : value
+
+    setLocalParams(prev => {
+      const next = { ...prev, [key]: processedValue }
+
+      if (key === 'created_after' && typeof processedValue === 'string') {
+        if (next.created_before && typeof next.created_before === 'string' && next.created_before < processedValue) {
+          next.created_before = processedValue
+        }
+      }
+
+      if (key === 'created_before' && typeof processedValue === 'string') {
+        if (next.created_after && typeof next.created_after === 'string' && processedValue < next.created_after) {
+          next.created_before = next.created_after
+        }
+      }
+
+      return next
+    })
   }
 
   const handleSearch = () => {
@@ -370,6 +390,7 @@ export function DocumentSearch({ onSearch, searchParams, advanced = false, onAIS
                 <Input
                   type="date"
                   value={localParams.created_before || ''}
+                  min={localParams.created_after || undefined}
                   onChange={(e) => handleParamChange('created_before', e.target.value)}
                 />
               </div>

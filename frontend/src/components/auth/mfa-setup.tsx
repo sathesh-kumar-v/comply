@@ -28,9 +28,10 @@ import axios from 'axios';
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://comply-x.onrender.com';
 
 interface MFASetupData {
+  methodId: number;
   secret: string;
-  qr_code: string;
-  backup_codes: string[];
+  qrCode: string;
+  backupCodes: string[];
 }
 
 interface MFAStatus {
@@ -65,10 +66,14 @@ export function MFASetup() {
       const token = localStorage.getItem('auth_token');
       if (!token) return;
 
-      const response = await axios.get(`${API_BASE_URL}/api/auth/mfa/status`, {
+      const response = await axios.get(`${API_BASE_URL}/api/mfa/status`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setMfaStatus(response.data);
+      const data = response.data as Partial<MFAStatus> & { mfa_enabled?: boolean };
+      setMfaStatus({
+        enabled: Boolean(data.enabled ?? data.mfa_enabled),
+        methods: Array.isArray(data.methods) ? data.methods : []
+      });
     } catch (error) {
       console.error('Failed to fetch MFA status:', error);
     }
@@ -81,12 +86,26 @@ export function MFASetup() {
     try {
       const token = localStorage.getItem('auth_token');
       const response = await axios.post(
-        `${API_BASE_URL}/api/auth/mfa/setup`,
+        `${API_BASE_URL}/api/mfa/totp/setup`,
         { password: formData.password },
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      setSetupData(response.data);
+      const data = response.data as {
+        method_id: number;
+        secret_key: string;
+        qr_code_base64: string;
+        backup_codes: string[];
+      };
+
+      setSetupData({
+        methodId: data.method_id,
+        secret: data.secret_key,
+        qrCode: data.qr_code_base64.startsWith('data:')
+          ? data.qr_code_base64
+          : `data:image/png;base64,${data.qr_code_base64}`,
+        backupCodes: data.backup_codes || []
+      });
       setCurrentStep('scan');
     } catch (error: any) {
       setError(error.response?.data?.detail || 'Failed to setup MFA');
@@ -104,11 +123,10 @@ export function MFASetup() {
     try {
       const token = localStorage.getItem('auth_token');
       await axios.post(
-        `${API_BASE_URL}/api/auth/mfa/verify`,
+        `${API_BASE_URL}/api/mfa/totp/verify`,
         {
-          secret: setupData.secret,
-          verification_code: formData.verificationCode,
-          backup_codes: setupData.backup_codes
+          method_id: setupData.methodId,
+          verification_code: formData.verificationCode
         },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -129,7 +147,7 @@ export function MFASetup() {
     try {
       const token = localStorage.getItem('auth_token');
       await axios.post(
-        `${API_BASE_URL}/api/auth/mfa/disable`,
+        `${API_BASE_URL}/api/mfa/disable`,
         { password: formData.password },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -158,8 +176,8 @@ export function MFASetup() {
 
   const downloadBackupCodes = () => {
     if (!setupData) return;
-    
-    const content = setupData.backup_codes.join('\n');
+
+    const content = setupData.backupCodes.join('\n');
     const blob = new Blob([content], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -252,8 +270,8 @@ export function MFASetup() {
       {setupData && (
         <div className="space-y-4">
           <div className="flex justify-center">
-            <img 
-              src={setupData.qr_code} 
+            <img
+              src={setupData.qrCode}
               alt="MFA QR Code"
               className="w-48 h-48 border rounded-lg"
             />
@@ -401,7 +419,7 @@ export function MFASetup() {
             <div className="bg-gray-100 p-4 rounded text-sm font-mono">
               {showBackupCodes ? (
                 <div className="grid grid-cols-2 gap-2">
-                  {setupData.backup_codes.map((code, index) => (
+                  {setupData.backupCodes.map((code, index) => (
                     <div key={index} className="flex justify-between">
                       <span>{code}</span>
                       <Button

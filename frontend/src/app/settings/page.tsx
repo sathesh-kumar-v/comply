@@ -12,6 +12,8 @@ import { MFASetup } from '@/components/auth/mfa-setup';
 import { User, Shield, Bell, Palette } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { useSettings } from '@/contexts/settings-context';
+import { DashboardLayout } from '@/components/layout/dashboard-layout';
+import { Badge } from '@/components/ui/badge';
 
 export default function SettingsPage() {
   const { user } = useAuth();
@@ -19,39 +21,127 @@ export default function SettingsPage() {
   const { security, updateSecurity } = useSettings();
 
   return (
-    <div className="p-6 max-w-4xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Settings</h1>
-        <p className="text-gray-600">Manage your account settings and preferences</p>
-      </div>
+    <DashboardLayout>
+      <div className="space-y-6 p-4 sm:p-6">
+        <div className="rounded-2xl border border-emerald-100 bg-gradient-to-r from-emerald-50/70 via-white to-white p-6 shadow-sm">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="space-y-2">
+              <p className="text-sm font-semibold uppercase tracking-wide text-emerald-600">Workspace preferences</p>
+              <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
+              <p className="text-sm text-gray-600 max-w-xl">
+                Manage your personal details, authentication controls, notification defaults, and interface style from one cohesive hub.
+              </p>
+            </div>
+            <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
+              {user?.permission_level && (
+                <Badge variant="outline" className="border-emerald-200 bg-white/70 text-emerald-700">
+                  {user.permission_level.replace(/_/g, ' ')} access
+                </Badge>
+              )}
+              <div className="rounded-xl border border-emerald-100 bg-white/70 px-4 py-3 shadow-sm">
+                <p className="text-xs uppercase tracking-wide text-emerald-600">Security posture</p>
+                <p className="text-sm font-semibold text-gray-800">
+                  {security.requireMfaForAdmins ? 'Admins must use MFA' : 'MFA optional for admins'}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
 
-      <Tabs
-        value={activeTab}
-        onValueChange={(value) => setActiveTab(value as typeof activeTab)}
-        className="space-y-6"
-      >
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="profile" className="flex items-center space-x-2">
-            <User className="h-4 w-4" />
-            <span>Profile</span>
-          </TabsTrigger>
-          <TabsTrigger value="security" className="flex items-center space-x-2">
-            <Shield className="h-4 w-4" />
-            <span>Security</span>
-          </TabsTrigger>
-          <TabsTrigger value="notifications" className="flex items-center space-x-2">
-            <Bell className="h-4 w-4" />
-            <span>Notifications</span>
-          </TabsTrigger>
-          <TabsTrigger value="appearance" className="flex items-center space-x-2">
-            <Palette className="h-4 w-4" />
-            <span>Appearance</span>
-          </TabsTrigger>
-        </TabsList>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <Card className="border border-emerald-100/80 bg-white/90 p-4 shadow-sm">
+            <div className="flex items-start gap-3">
+              <span className="rounded-lg bg-emerald-100 p-2 text-emerald-700">
+                <User className="h-5 w-5" />
+              </span>
+              <div className="space-y-1">
+                <p className="text-sm font-semibold text-gray-800">Profile completeness</p>
+                <p className="text-xs text-gray-600">
+                  {user?.first_name && user?.last_name ? 'Core details synced from directory.' : 'Complete your profile to improve visibility.'}
+                </p>
+              </div>
+            </div>
+          </Card>
+          <Card className="border border-emerald-100/80 bg-white/90 p-4 shadow-sm">
+            <div className="flex items-start gap-3">
+              <span className="rounded-lg bg-emerald-100 p-2 text-emerald-700">
+                <Shield className="h-5 w-5" />
+              </span>
+              <div className="space-y-1">
+                <p className="text-sm font-semibold text-gray-800">Authentication controls</p>
+                <p className="text-xs text-gray-600">
+                  {security.allowMfaEnrollment ? 'MFA enrollment is open to users.' : 'MFA enrollment currently restricted.'}
+                </p>
+              </div>
+            </div>
+          </Card>
+          <Card className="border border-emerald-100/80 bg-white/90 p-4 shadow-sm">
+            <div className="flex items-start gap-3">
+              <span className="rounded-lg bg-emerald-100 p-2 text-emerald-700">
+                <Bell className="h-5 w-5" />
+              </span>
+              <div className="space-y-1">
+                <p className="text-sm font-semibold text-gray-800">Notification cadence</p>
+                <p className="text-xs text-gray-600">
+                  Tailor announcement, reminder, and summary defaults for your account.
+                </p>
+              </div>
+            </div>
+          </Card>
+          <Card className="border border-emerald-100/80 bg-white/90 p-4 shadow-sm">
+            <div className="flex items-start gap-3">
+              <span className="rounded-lg bg-emerald-100 p-2 text-emerald-700">
+                <Palette className="h-5 w-5" />
+              </span>
+              <div className="space-y-1">
+                <p className="text-sm font-semibold text-gray-800">Theme preferences</p>
+                <p className="text-xs text-gray-600">
+                  Configure workspace density, contrast, and focus assist modes.
+                </p>
+              </div>
+            </div>
+          </Card>
+        </div>
 
-        <TabsContent value="profile" className="space-y-6">
-          <Card className="p-6">
-            <div className="space-y-4">
+        <Tabs
+          value={activeTab}
+          onValueChange={(value) => setActiveTab(value as typeof activeTab)}
+          className="space-y-6"
+        >
+          <TabsList className="grid w-full grid-cols-2 gap-2 rounded-2xl border border-emerald-100 bg-emerald-50/70 p-1 sm:grid-cols-4">
+            <TabsTrigger
+              value="profile"
+              className="flex items-center justify-center gap-2 rounded-xl border border-transparent px-3 py-2 text-sm font-semibold text-gray-600 transition data-[state=active]:border-emerald-200 data-[state=active]:bg-white data-[state=active]:text-emerald-700"
+            >
+              <User className="h-4 w-4" />
+              <span>Profile</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="security"
+              className="flex items-center justify-center gap-2 rounded-xl border border-transparent px-3 py-2 text-sm font-semibold text-gray-600 transition data-[state=active]:border-emerald-200 data-[state=active]:bg-white data-[state=active]:text-emerald-700"
+            >
+              <Shield className="h-4 w-4" />
+              <span>Security</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="notifications"
+              className="flex items-center justify-center gap-2 rounded-xl border border-transparent px-3 py-2 text-sm font-semibold text-gray-600 transition data-[state=active]:border-emerald-200 data-[state=active]:bg-white data-[state=active]:text-emerald-700"
+            >
+              <Bell className="h-4 w-4" />
+              <span>Notifications</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="appearance"
+              className="flex items-center justify-center gap-2 rounded-xl border border-transparent px-3 py-2 text-sm font-semibold text-gray-600 transition data-[state=active]:border-emerald-200 data-[state=active]:bg-white data-[state=active]:text-emerald-700"
+            >
+              <Palette className="h-4 w-4" />
+              <span>Appearance</span>
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="profile" className="space-y-6">
+            <Card className="border border-emerald-100/80 bg-white/90 p-6 shadow-sm">
+              <div className="space-y-4">
               <div>
                 <h3 className="text-lg font-semibold">Profile Information</h3>
                 <p className="text-sm text-gray-600">
@@ -137,7 +227,7 @@ export default function SettingsPage() {
         </TabsContent>
 
         <TabsContent value="security" className="space-y-6">
-          <Card className="p-6">
+          <Card className="border border-emerald-100/80 bg-white/90 p-6 shadow-sm">
             <div className="space-y-4">
               <div>
                 <h3 className="text-lg font-semibold">Security Controls</h3>
@@ -190,7 +280,7 @@ export default function SettingsPage() {
             </div>
           </Card>
 
-          <Card className="p-6">
+          <Card className="border border-emerald-100/80 bg-white/90 p-6 shadow-sm">
             <div className="space-y-4">
               <div>
                 <h3 className="text-lg font-semibold">Password</h3>
@@ -235,11 +325,13 @@ export default function SettingsPage() {
             </div>
           </Card>
 
-          <MFASetup />
+          <div className="rounded-2xl border border-emerald-100/80 bg-white/80 p-1 shadow-sm">
+            <MFASetup />
+          </div>
         </TabsContent>
 
         <TabsContent value="notifications" className="space-y-6">
-          <Card className="p-6">
+          <Card className="border border-emerald-100/80 bg-white/90 p-6 shadow-sm">
             <div className="space-y-4">
               <div>
                 <h3 className="text-lg font-semibold">Notification Preferences</h3>
@@ -259,7 +351,7 @@ export default function SettingsPage() {
         </TabsContent>
 
         <TabsContent value="appearance" className="space-y-6">
-          <Card className="p-6">
+          <Card className="border border-emerald-100/80 bg-white/90 p-6 shadow-sm">
             <div className="space-y-4">
               <div>
                 <h3 className="text-lg font-semibold">Appearance Settings</h3>
@@ -277,7 +369,8 @@ export default function SettingsPage() {
             </div>
           </Card>
         </TabsContent>
-      </Tabs>
-    </div>
+        </Tabs>
+      </div>
+    </DashboardLayout>
   );
 }
