@@ -3,17 +3,16 @@
 import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { 
-  FileText, 
-  Download, 
-  AlertTriangle, 
-  Loader2, 
+import {
+  FileText,
+  Download,
+  AlertTriangle,
+  Loader2,
   Eye,
-  ExternalLink,
-  Maximize2
+  ExternalLink
 } from 'lucide-react'
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://comply-x.onrender.com'
+import { buildApiUrl } from '@/lib/api-url'
 
 interface DocumentViewerProps {
   documentId: number
@@ -38,6 +37,14 @@ export function DocumentViewer({
     loadDocument()
   }, [documentId])
 
+  useEffect(() => {
+    return () => {
+      if (documentUrl) {
+        URL.revokeObjectURL(documentUrl)
+      }
+    }
+  }, [documentUrl])
+
   const loadDocument = async () => {
     setIsLoading(true)
     setError(null)
@@ -50,7 +57,7 @@ export function DocumentViewer({
       }
 
       // Create blob URL for viewing
-      const response = await fetch(`${API_BASE_URL}/api/documents/${documentId}/download`, {
+      const response = await fetch(buildApiUrl(`/api/documents/${documentId}/download`), {
         headers: { 'Authorization': `Bearer ${token}` }
       })
 
@@ -60,7 +67,12 @@ export function DocumentViewer({
 
       const blob = await response.blob()
       const url = URL.createObjectURL(blob)
-      setDocumentUrl(url)
+      setDocumentUrl((previousUrl) => {
+        if (previousUrl) {
+          URL.revokeObjectURL(previousUrl)
+        }
+        return url
+      })
       
     } catch (error) {
       console.error('Error loading document:', error)
@@ -75,7 +87,7 @@ export function DocumentViewer({
       const token = localStorage.getItem('auth_token')
       if (!token) return
 
-      const response = await fetch(`${API_BASE_URL}/api/documents/${documentId}/download`, {
+      const response = await fetch(buildApiUrl(`/api/documents/${documentId}/download`), {
         headers: { 'Authorization': `Bearer ${token}` }
       })
 
