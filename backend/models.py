@@ -1066,6 +1066,158 @@ class TaskDependency(Base):
     successor_id = Column(Integer, ForeignKey("project_tasks.id", ondelete="CASCADE"), index=True)
 
 
+# --- Incident Reporting & Investigation Models ---
+
+
+class IncidentSeverity(PyEnum):
+    LOW = "Low"
+    MEDIUM = "Medium"
+    HIGH = "High"
+    CRITICAL = "Critical"
+
+
+class IncidentStatus(PyEnum):
+    OPEN = "Open"
+    UNDER_INVESTIGATION = "Under Investigation"
+    RESOLVED = "Resolved"
+    CLOSED = "Closed"
+
+
+class IncidentPriority(PyEnum):
+    LOW = "Low"
+    MEDIUM = "Medium"
+    HIGH = "High"
+    CRITICAL = "Critical"
+
+
+class IncidentActivityType(PyEnum):
+    INTERVIEW = "Interview"
+    EVIDENCE_COLLECTION = "Evidence Collection"
+    ANALYSIS = "Analysis"
+    SITE_VISIT = "Site Visit"
+    EXPERT_CONSULTATION = "Expert Consultation"
+    TESTING = "Testing"
+    RESEARCH = "Research"
+    OTHER = "Other"
+
+
+class Incident(Base):
+    __tablename__ = "incidents"
+
+    id = Column(Integer, primary_key=True, index=True)
+    reference_id = Column(String(32), unique=True, index=True, nullable=False)
+    title = Column(String(200), nullable=False)
+    incident_type = Column(String(100), nullable=False)
+    incident_category = Column(String(120), nullable=True)
+    department = Column(String(120), nullable=False)
+    location_path = Column(JSON, nullable=False, default=list)
+    occurred_at = Column(DateTime, nullable=False)
+    reported_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    severity = Column(Enum(IncidentSeverity), nullable=False)
+    status = Column(Enum(IncidentStatus), nullable=False, default=IncidentStatus.OPEN)
+    priority = Column(Enum(IncidentPriority), nullable=False, default=IncidentPriority.MEDIUM)
+
+    impact_assessment = Column(Text, nullable=False)
+    immediate_actions = Column(Text, nullable=True)
+    detailed_description = Column(Text, nullable=False)
+    what_happened = Column(Text, nullable=False)
+    root_cause = Column(Text, nullable=True)
+    contributing_factors = Column(JSON, nullable=True)
+    people_involved = Column(JSON, nullable=True)
+    witnesses = Column(JSON, nullable=True)
+    equipment_involved = Column(Text, nullable=True)
+
+    immediate_notification = Column(JSON, nullable=False, default=list)
+    escalation_path = Column(JSON, nullable=False, default=list)
+    external_notifications = Column(JSON, nullable=True)
+    public_disclosure_required = Column(Boolean, default=False)
+
+    assigned_investigator_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    investigation_team = Column(JSON, nullable=True)
+    target_resolution_date = Column(Date, nullable=True)
+    actual_resolution_date = Column(Date, nullable=True)
+    investigation_started_at = Column(DateTime, nullable=True)
+    investigation_closed_at = Column(DateTime, nullable=True)
+    rca_method = Column(String(50), nullable=True)
+    primary_root_cause = Column(Text, nullable=True)
+    rca_diagram = Column(JSON, nullable=True)
+    rca_evidence = Column(JSON, nullable=True)
+
+    ai_summary = Column(JSON, nullable=True)
+    ai_investigation_insights = Column(JSON, nullable=True)
+
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    assigned_investigator = relationship("User", foreign_keys=[assigned_investigator_id])
+    created_by = relationship("User", foreign_keys=[created_by_id])
+
+    activities = relationship(
+        "IncidentActivity",
+        cascade="all, delete-orphan",
+        back_populates="incident",
+        order_by="IncidentActivity.timestamp",
+    )
+    attachments = relationship(
+        "IncidentAttachment",
+        cascade="all, delete-orphan",
+        back_populates="incident",
+    )
+    root_cause_factors = relationship(
+        "IncidentRootCauseFactor",
+        cascade="all, delete-orphan",
+        back_populates="incident",
+    )
+
+
+class IncidentAttachment(Base):
+    __tablename__ = "incident_attachments"
+
+    id = Column(Integer, primary_key=True)
+    incident_id = Column(Integer, ForeignKey("incidents.id", ondelete="CASCADE"), index=True)
+    file_name = Column(String(255), nullable=False)
+    stored_name = Column(String(255), nullable=False)
+    file_path = Column(String(512), nullable=False)
+    mime_type = Column(String(120), nullable=True)
+    file_size = Column(Integer, nullable=True)
+    description = Column(Text, nullable=True)
+    uploaded_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    uploaded_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    incident = relationship("Incident", back_populates="attachments")
+    uploaded_by = relationship("User")
+
+
+class IncidentActivity(Base):
+    __tablename__ = "incident_activities"
+
+    id = Column(Integer, primary_key=True)
+    incident_id = Column(Integer, ForeignKey("incidents.id", ondelete="CASCADE"), index=True)
+    timestamp = Column(DateTime, nullable=False, default=datetime.utcnow)
+    activity_type = Column(Enum(IncidentActivityType), nullable=False)
+    investigator_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    description = Column(Text, nullable=True)
+    findings = Column(Text, nullable=True)
+    follow_up_required = Column(Boolean, default=False)
+    evidence_path = Column(String(512), nullable=True)
+
+    incident = relationship("Incident", back_populates="activities")
+    investigator = relationship("User")
+
+
+class IncidentRootCauseFactor(Base):
+    __tablename__ = "incident_root_cause_factors"
+
+    id = Column(Integer, primary_key=True)
+    incident_id = Column(Integer, ForeignKey("incidents.id", ondelete="CASCADE"), index=True)
+    description = Column(Text, nullable=False)
+    category = Column(String(50), nullable=False)
+    impact_level = Column(Enum(IncidentSeverity), nullable=False)
+
+    incident = relationship("Incident", back_populates="root_cause_factors")
+
+
 # --- Country Risk Assessment Models ---
 
 
