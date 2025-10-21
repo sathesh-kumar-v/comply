@@ -6,6 +6,9 @@ const sanitizedEnvBase = RAW_ENV_BASE.replace(/\/+$/, '')
 const API_BASE_URL =
   sanitizedEnvBase || (process.env.NODE_ENV === 'development' ? '' : DEFAULT_PRODUCTION_BASE)
 
+const hasExplicitBase = sanitizedEnvBase.length > 0
+const hasDefaultBase = API_BASE_URL.length > 0
+
 function combinePath(base: string, path: string): string {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`
 
@@ -35,7 +38,15 @@ export function getApiBaseUrl(): string {
 }
 
 export function isApiBaseConfigured(): boolean {
-  return Boolean(sanitizedEnvBase)
+  if (hasExplicitBase || hasDefaultBase) {
+    return true
+  }
+
+  if (typeof window !== 'undefined') {
+    return true
+  }
+
+  return process.env.NODE_ENV !== 'production'
 }
 
 export function buildApiUrl(path: string): string {
