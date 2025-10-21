@@ -23,6 +23,9 @@ export interface User {
   department?: string
   position?: string
   avatar_url?: string
+  timezone?: string
+  notifications_email?: boolean
+  notifications_sms?: boolean
 }
 
 export interface LoginCredentials {
@@ -41,6 +44,11 @@ export interface RegisterData {
   department?: string
   position?: string
   role?: 'admin' | 'manager' | 'auditor' | 'employee' | 'viewer'
+  permission_level?: User['permission_level']
+  timezone?: string
+  notifications_email?: boolean
+  notifications_sms?: boolean
+  is_active?: boolean
 }
 
 export interface AuthResponse {
@@ -48,6 +56,36 @@ export interface AuthResponse {
   token_type: string
   expires_in: number
   user: User
+}
+
+export interface CreateUserPayload {
+  email: string
+  username: string
+  first_name: string
+  last_name: string
+  password: string
+  role: User['role']
+  permission_level?: User['permission_level']
+  phone?: string
+  position?: string
+  timezone?: string
+  notifications_email?: boolean
+  notifications_sms?: boolean
+  is_active?: boolean
+}
+
+export interface UpdateUserPayload {
+  first_name?: string
+  last_name?: string
+  phone?: string
+  position?: string
+  role?: User['role']
+  permission_level?: User['permission_level']
+  is_active?: boolean
+  notifications_email?: boolean
+  notifications_sms?: boolean
+  timezone?: string
+  password?: string
 }
 
 class AuthService {
@@ -166,6 +204,16 @@ class AuthService {
 
   async getUsers(): Promise<User[]> {
     const response = await this.apiClient.get('/auth/users')
+    return response.data
+  }
+
+  async createUser(userData: CreateUserPayload): Promise<User> {
+    const response = await this.apiClient.post('/auth/users', userData)
+    return response.data
+  }
+
+  async updateUser(userId: number, userData: UpdateUserPayload): Promise<User> {
+    const response = await this.apiClient.put(`/auth/users/${userId}`, userData)
     return response.data
   }
 

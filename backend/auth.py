@@ -18,7 +18,7 @@ from schemas import (
     UserCreate, UserLogin, Token, UserResponse, TokenData,
     PasswordResetRequest, PasswordResetConfirm, MFASetupRequest,
     MFASetupResponse, MFAVerifyRequest, MFALoginRequest, MFAStatusResponse,
-    GoogleOAuthRequest
+    GoogleOAuthRequest, UserUpdate
 )
 from email_service import email_service
 import os
@@ -90,6 +90,53 @@ ROLE_PERMISSION_DEFAULT = {
     UserRole.EMPLOYEE: PermissionLevel.VIEW_ONLY,
     UserRole.VIEWER: PermissionLevel.VIEW_ONLY,
 }
+
+
+def _create_user_record(db: Session, user_data: UserCreate) -> User:
+    """Persist a new user record applying defaults and hashing the password."""
+
+    if get_user_by_email(db, user_data.email):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already registered",
+        )
+
+    if get_user_by_username(db, user_data.username):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username already taken",
+        )
+
+    hashed_password = get_password_hash(user_data.password)
+    permission_level = (
+        user_data.permission_level
+        if getattr(user_data, "permission_level", None)
+        else ROLE_PERMISSION_DEFAULT.get(user_data.role, PermissionLevel.VIEW_ONLY)
+    )
+
+    db_user = User(
+        email=user_data.email,
+        username=user_data.username,
+        first_name=user_data.first_name,
+        last_name=user_data.last_name,
+        hashed_password=hashed_password,
+        role=user_data.role,
+        permission_level=permission_level,
+        phone=user_data.phone,
+        position=user_data.position,
+        employee_id=getattr(user_data, "employee_id", None),
+        areas_of_responsibility=json.dumps(getattr(user_data, "areas_of_responsibility", [])),
+        timezone=getattr(user_data, "timezone", "UTC"),
+        notifications_email=getattr(user_data, "notifications_email", True),
+        notifications_sms=getattr(user_data, "notifications_sms", False),
+        is_active=getattr(user_data, "is_active", True),
+    )
+
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+
+    return db_user
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
@@ -226,41 +273,7 @@ def generate_qr_code(secret: str, user_email: str) -> str:
                  400: {"description": "Email already registered or username already taken"},
              })
 async def register(user_data: UserCreate, db: Session = Depends(get_db)):
-    # Check if user already exists
-    if get_user_by_email(db, user_data.email):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
-        )
-    
-    if get_user_by_username(db, user_data.username):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username already taken"
-        )
-    
-    # Create new user
-    hashed_password = get_password_hash(user_data.password)
-    db_user = User(
-        email=user_data.email,
-        username=user_data.username,
-        first_name=user_data.first_name,
-        last_name=user_data.last_name,
-        hashed_password=hashed_password,
-        role=user_data.role,
-        phone=user_data.phone,
-        position=user_data.position,
-        employee_id=getattr(user_data, 'employee_id', None),
-        areas_of_responsibility=json.dumps(getattr(user_data, 'areas_of_responsibility', [])),
-        timezone=getattr(user_data, 'timezone', 'UTC'),
-        notifications_email=getattr(user_data, 'notifications_email', True),
-        notifications_sms=getattr(user_data, 'notifications_sms', False)
-    )
-    
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    
+    db_user = _create_user_record(db, user_data)
     return UserResponse.model_validate(db_user)
 
 @router.post("/login", 
@@ -377,7 +390,7 @@ async def oauth_google_login(
 async def get_current_user_info(current_user: User = Depends(get_current_user)):
     return UserResponse.model_validate(current_user)
 
-@router.get("/users", 
+@router.get("/users",
             response_model=list[UserResponse],
             summary="List All Users",
             description="Get a list of all users in the system. Requires Admin or Manager role.",
@@ -392,6 +405,77 @@ async def get_users(
 ):
     users = db.query(User).all()
     return [UserResponse.model_validate(user) for user in users]
+
+
+@router.post(
+    "/users",
+    response_model=UserResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create User (Admin)",
+    description="Create a new user account. Requires Admin, Manager, or Super Admin role.",
+)
+async def create_user_admin(
+    user_data: UserCreate,
+    current_user: User = Depends(require_role([UserRole.ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN])),
+    db: Session = Depends(get_db),
+):
+    db_user = _create_user_record(db, user_data)
+    return UserResponse.model_validate(db_user)
+
+
+@router.put(
+    "/users/{user_id}",
+    response_model=UserResponse,
+    summary="Update User",
+    description="Update user profile details, role assignments, and permission levels.",
+)
+async def update_user_details(
+    user_id: int,
+    payload: UserUpdate,
+    current_user: User = Depends(require_role([UserRole.ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN])),
+    db: Session = Depends(get_db),
+):
+    db_user = db.query(User).filter(User.id == user_id).first()
+    if not db_user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    update_data = payload.model_dump(exclude_unset=True)
+
+    if "password" in update_data:
+        db_user.hashed_password = get_password_hash(update_data.pop("password"))
+
+    if "role" in update_data:
+        db_user.role = update_data.pop("role")
+        # If a new role is provided but permission wasn't overridden, align with defaults
+        if "permission_level" not in update_data and payload.permission_level is None:
+            db_user.permission_level = ROLE_PERMISSION_DEFAULT.get(db_user.role, db_user.permission_level)
+
+    if "permission_level" in update_data:
+        db_user.permission_level = update_data.pop("permission_level")
+
+    for field in [
+        "first_name",
+        "last_name",
+        "phone",
+        "position",
+        "is_active",
+        "notifications_email",
+        "notifications_sms",
+        "timezone",
+    ]:
+        if field in update_data:
+            setattr(db_user, field, update_data.pop(field))
+
+    if update_data:
+        # Log or ignore unsupported fields gracefully
+        for key in list(update_data.keys()):
+            update_data.pop(key)
+
+    db_user.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(db_user)
+
+    return UserResponse.model_validate(db_user)
 
 @router.post("/password-reset/request",
              summary="Request Password Reset",
