@@ -992,14 +992,22 @@ export default function AuditsPage() {
 
                       {calendarView !== "day"
                         ? calendarDays.map((day) => (
-                            <button
-                              type="button"
+                            <div
+                              role="button"
+                              tabIndex={0}
                               key={day.iso}
                               onClick={() => {
                                 setSelectedDate(day.date)
                                 setCalendarView("day")
                               }}
-                              className={`rounded-lg border p-3 text-left transition hover:border-emerald-400 hover:shadow-sm ${
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter" || event.key === " ") {
+                                  event.preventDefault()
+                                  setSelectedDate(day.date)
+                                  setCalendarView("day")
+                                }
+                              }}
+                              className={`rounded-lg border p-3 text-left transition hover:border-emerald-400 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 ${
                                 day.inMonth ? "bg-white" : "bg-muted"
                               } ${day.isToday ? "border-emerald-400" : "border-emerald-100"}`}
                             >
@@ -1010,7 +1018,7 @@ export default function AuditsPage() {
                                 {day.isToday ? <Badge className="bg-emerald-600 text-xs text-white">Today</Badge> : null}
                               </div>
                               {renderCalendarCellEvents(day)}
-                            </button>
+                            </div>
                           ))
                         : null}
                     </div>
@@ -1999,9 +2007,9 @@ export default function AuditsPage() {
                             }),
                           (response) => {
                             setNotificationTemplates({
-                              announcement_email: response.announcement_email,
-                              daily_reminder_email: response.daily_reminder_email,
-                              completion_email: response.completion_email,
+                              announcement_email: response.announcement_email ?? "",
+                              daily_reminder_email: response.daily_reminder_email ?? "",
+                              completion_email: response.completion_email ?? "",
                             })
                             setCommunicationInsights(response)
                           },
