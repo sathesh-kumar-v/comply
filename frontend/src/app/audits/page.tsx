@@ -1,10 +1,18 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -26,6 +34,7 @@ import {
 } from "@/lib/audit-builder"
 import type {
   AuditCreatePayload,
+  AuditSummary,
   ChecklistSection,
   CommunicationAiResponse,
   PlanningDashboardResponse,
@@ -34,6 +43,7 @@ import type {
 import { DEPARTMENT_OPTIONS, OTHER_DEPARTMENT_VALUE } from "@/constants/departments"
 import {
   CalendarDays,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Download,
@@ -314,6 +324,11 @@ export default function AuditsPage() {
 
   const [aiLoading, setAiLoading] = useState<Record<string, boolean>>({})
   const [alert, setAlert] = useState<{ type: "success" | "error"; message: string } | null>(null)
+  const [expandedAuditId, setExpandedAuditId] = useState<string | null>(null)
+  const [selectedAudit, setSelectedAudit] = useState<AuditSummary | null>(null)
+  const [planDialogOpen, setPlanDialogOpen] = useState(false)
+
+  const creationSectionRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     const loadData = async () => {
@@ -354,6 +369,132 @@ export default function AuditsPage() {
       setScheduling((prev) => ({ ...prev, estimatedDuration: diff }))
     }
   }, [scheduling.startDate, scheduling.endDate])
+
+  const handleOpenCreateAudit = () => {
+    setActiveTab("create")
+    if (typeof window !== "undefined") {
+      window.requestAnimationFrame(() => {
+        creationSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+      })
+    } else {
+      creationSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+    }
+  }
+
+  const handleDialogOpenChange = (open: boolean) => {
+    setPlanDialogOpen(open)
+    if (!open) {
+      setSelectedAudit(null)
+    }
+  }
+
+  const toggleAuditExpansion = (auditId: string) => {
+    setExpandedAuditId((current) => (current === auditId ? null : auditId))
+  }
+
+  const handleViewPlan = (audit: AuditSummary) => {
+    setSelectedAudit(audit)
+    setPlanDialogOpen(true)
+  }
+
+  const downloadFile = (content: string, mimeType: string, filename: string) => {
+    const blob = new Blob([content], { type: mimeType })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement("a")
+    anchor.href = url
+    anchor.download = filename
+    anchor.rel = "noopener"
+    anchor.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const formatDateForIcs = (date: Date) => {
+    const pad = (value: number) => value.toString().padStart(2, "0")
+    return `${date.getUTCFullYear()}${pad(date.getUTCMonth() + 1)}${pad(date.getUTCDate())}T${pad(date.getUTCHours())}${pad(
+      date.getUTCMinutes(),
+    )}${pad(date.getUTCSeconds())}Z`
+  }
+
+  const handleExportSchedule = (audit: AuditSummary) => {
+    const start = new Date(audit.start_date)
+    const end = new Date(audit.end_date)
+
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      setAlert({ type: "error", message: `Unable to export schedule for ${audit.title}. Missing or invalid dates.` })
+      return
+    }
+
+    start.setHours(9, 0, 0, 0)
+    end.setHours(17, 0, 0, 0)
+
+    const newline = "\r\n"
+    const lines = [
+      "BEGIN:VCALENDAR",
+      "VERSION:2.0",
+      "PRODID:-//Comply//Audit Builder//EN",
+      "BEGIN:VEVENT",
+      `UID:${audit.id}@comply`,
+      `DTSTAMP:${formatDateForIcs(new Date())}`,
+      `DTSTART:${formatDateForIcs(start)}`,
+      `DTEND:${formatDateForIcs(end)}`,
+      `SUMMARY:${audit.title}`,
+      `DESCRIPTION:${audit.audit_type} led by ${audit.lead_auditor} for ${audit.departments.join(", ")}`,
+      "CATEGORIES:Audit",
+      `LOCATION:${audit.departments.join("; ")}`,
+      "END:VEVENT",
+      "END:VCALENDAR",
+    ]
+
+    downloadFile(lines.join(newline), "text/calendar", `${audit.id}-schedule.ics`)
+    setAlert({ type: "success", message: `Exported schedule for ${audit.title}.` })
+  }
+
+  const handleExportPlan = (audit: AuditSummary | null) => {
+    if (!audit) {
+      setAlert({ type: "error", message: "Unable to export audit plan. No audit selected." })
+      return
+    }
+
+    const recommendations: string[] = []
+    switch (audit.status) {
+      case "Scheduled":
+        recommendations.push("Confirm kickoff readiness and circulate the audit announcement to stakeholders.")
+        break
+      case "In Progress":
+        recommendations.push("Capture interim findings and review progress checkpoints with the audit team.")
+        break
+      case "Completed":
+        recommendations.push("Finalise documentation and schedule a retrospective with the auditee to close actions.")
+        break
+      default:
+        recommendations.push("Keep the engagement team aligned on next milestones and stakeholder updates.")
+        break
+    }
+
+    recommendations.push(`Risk level: ${audit.risk_level}. Prioritise mitigations for ${audit.departments.join(", ")}.`)
+
+    const planExport = {
+      id: audit.id,
+      title: audit.title,
+      status: audit.status,
+      risk_level: audit.risk_level,
+      audit_type: audit.audit_type,
+      departments: audit.departments,
+      schedule: {
+        start_date: audit.start_date,
+        end_date: audit.end_date,
+        estimated_duration_hours: audit.estimated_duration_hours,
+      },
+      team: {
+        lead: audit.lead_auditor,
+        members: audit.audit_team,
+      },
+      recommendations,
+    }
+
+    downloadFile(JSON.stringify(planExport, null, 2), "application/json", `${audit.id}-plan.json`)
+    setAlert({ type: "success", message: `Exported plan for ${audit.title}.` })
+  }
 
   const audits = dashboardData?.audits ?? []
 
@@ -686,7 +827,7 @@ export default function AuditsPage() {
                 </div>
                 <div className="flex flex-col gap-3 md:flex-row md:items-center">
                   <div className="flex items-center gap-2">
-                    <Button className="bg-primary text-white">
+                    <Button className="bg-primary text-white" onClick={handleOpenCreateAudit}>
                       <Plus className="mr-2 h-4 w-4" /> Create Audit
                     </Button>
                     <DropdownMenu>
@@ -863,52 +1004,120 @@ export default function AuditsPage() {
                     <CardContent className="space-y-4">
                       {filteredAudits.map((audit) => (
                         <div key={audit.id} className="rounded-xl border border-emerald-100 bg-white p-4 shadow-sm">
-                          <div className="flex flex-col gap-4 md:flex-row md:justify-between">
-                            <div className="space-y-2">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <h3 className="text-lg font-semibold text-gray-900">{audit.title}</h3>
-                                <Badge variant="outline" className="border-emerald-200 text-emerald-700">
-                                  {audit.audit_type}
-                                </Badge>
-                                <Badge className="bg-emerald-100 text-emerald-700">{audit.status}</Badge>
-                              </div>
-                              <p className="text-sm text-gray-500">Departments: {audit.departments.join(", ")}</p>
-                              <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600">
-                                <span>
-                                  <strong>Start:</strong> {formatDisplayDate(audit.start_date)}
-                                </span>
-                                <span>
-                                  <strong>End:</strong> {formatDisplayDate(audit.end_date)}
-                                </span>
-                                <span className="flex items-center gap-1">
-                                  <Users className="h-4 w-4 text-emerald-500" /> {audit.lead_auditor}
-                                </span>
-                              </div>
-                              <div className="space-y-1">
-                                <div className="flex items-center justify-between text-xs text-gray-500">
-                                  <span>Progress</span>
-                                  <span>{audit.progress}%</span>
+                          <div className="flex flex-col gap-4">
+                            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                              <div className="space-y-2">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <h3 className="text-lg font-semibold text-gray-900">{audit.title}</h3>
+                                  <Badge variant="outline" className="border-emerald-200 text-emerald-700">
+                                    {audit.audit_type}
+                                  </Badge>
+                                  <Badge className="bg-emerald-100 text-emerald-700">{audit.status}</Badge>
                                 </div>
-                                <Progress value={audit.progress} className="h-2" />
+                                <p className="text-sm text-gray-500">Departments: {audit.departments.join(", ")}</p>
+                                <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600">
+                                  <span>
+                                    <strong>Start:</strong> {formatDisplayDate(audit.start_date)}
+                                  </span>
+                                  <span>
+                                    <strong>End:</strong> {formatDisplayDate(audit.end_date)}
+                                  </span>
+                                  <span className="flex items-center gap-1">
+                                    <Users className="h-4 w-4 text-emerald-500" /> {audit.lead_auditor}
+                                  </span>
+                                </div>
+                                <div className="space-y-1">
+                                  <div className="flex items-center justify-between text-xs text-gray-500">
+                                    <span>Progress</span>
+                                    <span>{audit.progress}%</span>
+                                  </div>
+                                  <Progress value={audit.progress} className="h-2" />
+                                </div>
+                              </div>
+                              <div className="flex flex-col items-start gap-2 text-sm text-gray-500 md:items-end">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="outline" size="sm" className="border-emerald-200">
+                                      Quick Actions
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem onSelect={() => handleViewPlan(audit)}>View plan</DropdownMenuItem>
+                                    <DropdownMenuItem onSelect={() => handleExportPlan(audit)}>Export plan</DropdownMenuItem>
+                                    <DropdownMenuItem onSelect={() => toggleAuditExpansion(audit.id)}>
+                                      {expandedAuditId === audit.id ? "Collapse details" : "Expand details"}
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="flex items-center gap-1 text-emerald-700"
+                                  onClick={() => handleExportSchedule(audit)}
+                                >
+                                  <Download className="h-4 w-4" /> Export schedule
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="flex items-center gap-1 text-emerald-700"
+                                  onClick={() => toggleAuditExpansion(audit.id)}
+                                  aria-expanded={expandedAuditId === audit.id}
+                                >
+                                  <ChevronDown
+                                    className={`h-4 w-4 transition-transform ${expandedAuditId === audit.id ? "rotate-180" : ""}`}
+                                  />
+                                  {expandedAuditId === audit.id ? "Collapse details" : "Expand details"}
+                                </Button>
                               </div>
                             </div>
-                            <div className="flex flex-col items-start gap-2 text-sm text-gray-500">
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button variant="outline" size="sm" className="border-emerald-200">
-                                    Quick Actions
+                            {expandedAuditId === audit.id ? (
+                              <div className="space-y-4 rounded-lg border border-emerald-100 bg-emerald-50/60 p-4 text-sm text-emerald-900">
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                  <div>
+                                    <p className="text-xs font-semibold uppercase text-emerald-700">Audit ID</p>
+                                    <p className="font-medium text-emerald-900">{audit.id}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-xs font-semibold uppercase text-emerald-700">Risk level</p>
+                                    <p className="font-medium text-emerald-900">{audit.risk_level}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-xs font-semibold uppercase text-emerald-700">Duration</p>
+                                    <p className="font-medium text-emerald-900">{audit.estimated_duration_hours} hours</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-xs font-semibold uppercase text-emerald-700">Team</p>
+                                    <p className="font-medium text-emerald-900">
+                                      {audit.audit_team.length ? audit.audit_team.join(", ") : "Team to be confirmed"}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="grid gap-2">
+                                  <p className="text-xs font-semibold uppercase text-emerald-700">Next steps</p>
+                                  <ul className="list-disc space-y-1 pl-5">
+                                    <li>
+                                      {audit.status === "Completed"
+                                        ? "Close out any outstanding corrective actions and communicate final results."
+                                        : audit.status === "In Progress"
+                                        ? "Align daily with the audit team on findings and stakeholder updates."
+                                        : "Confirm kickoff logistics and ensure stakeholders receive the announcement."}
+                                    </li>
+                                    <li>
+                                      {`Focus on mitigating ${audit.risk_level.toLowerCase()}-risk issues within ${audit.departments.join(", ")}.`}
+                                    </li>
+                                  </ul>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <Button variant="outline" size="sm" onClick={() => handleViewPlan(audit)}>
+                                    View expansion plan
                                   </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  <DropdownMenuItem>View plan</DropdownMenuItem>
-                                  <DropdownMenuItem>Export briefing</DropdownMenuItem>
-                                  <DropdownMenuItem>Duplicate audit</DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                              <Button variant="ghost" size="sm" className="text-emerald-700">
-                                <Download className="mr-1 h-4 w-4" /> Export schedule
-                              </Button>
-                            </div>
+                                  <Button size="sm" className="bg-emerald-600 text-white" onClick={() => handleExportPlan(audit)}>
+                                    Export expansion plan
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : null}
                           </div>
                         </div>
                       ))}
@@ -964,7 +1173,7 @@ export default function AuditsPage() {
               </CardContent>
             </Card>
           </TabsContent>
-          <TabsContent value="create" className="space-y-6">
+          <TabsContent value="create" className="space-y-6" ref={creationSectionRef}>
             <Card className="border border-emerald-100 shadow-sm">
               <CardHeader>
                 <CardTitle className="text-primary">Audit Creation Wizard</CardTitle>
@@ -2049,7 +2258,7 @@ export default function AuditsPage() {
                     </Button>
                   </div>
                   <div className="flex items-center gap-3">
-                    <Button variant="outline" className="border-emerald-200" onClick={() => setReviewOption("draft")">
+                    <Button variant="outline" className="border-emerald-200" onClick={() => setReviewOption('draft')}>
                       Save as Draft
                     </Button>
                     <Button className="bg-primary text-white" onClick={handleSubmit}>
@@ -2061,6 +2270,83 @@ export default function AuditsPage() {
             </Card>
           </TabsContent>
         </Tabs>
+        <Dialog open={planDialogOpen} onOpenChange={handleDialogOpenChange}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>{selectedAudit?.title ?? "Audit plan"}</DialogTitle>
+              <DialogDescription>
+                Review the audit schedule, team assignments, and recommended next steps. Export artifacts for stakeholders.
+              </DialogDescription>
+            </DialogHeader>
+            {selectedAudit ? (
+              <div className="space-y-4 text-sm text-gray-600">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <p className="text-xs font-semibold uppercase text-gray-500">Audit ID</p>
+                    <p className="text-base font-medium text-gray-900">{selectedAudit.id}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase text-gray-500">Status</p>
+                    <p className="text-base font-medium text-gray-900">{selectedAudit.status}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase text-gray-500">Schedule</p>
+                    <p className="text-base font-medium text-gray-900">
+                      {formatDisplayDate(selectedAudit.start_date)} – {formatDisplayDate(selectedAudit.end_date)}
+                    </p>
+                    <p className="text-xs text-gray-500">Estimated {selectedAudit.estimated_duration_hours} hours</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase text-gray-500">Lead Auditor</p>
+                    <p className="text-base font-medium text-gray-900">{selectedAudit.lead_auditor}</p>
+                    <p className="text-xs text-gray-500">
+                      Team: {selectedAudit.audit_team.length ? selectedAudit.audit_team.join(", ") : "To be assigned"}
+                    </p>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase text-gray-500">Departments</p>
+                  <p className="text-base font-medium text-gray-900">{selectedAudit.departments.join(", ")}</p>
+                  <p className="text-xs text-gray-500">Risk level: {selectedAudit.risk_level}</p>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase text-gray-500">Recommended focus</p>
+                  <ul className="list-disc space-y-1 pl-4">
+                    <li>
+                      {selectedAudit.status === "Completed"
+                        ? "Close outstanding actions, capture lessons learned, and circulate the final report."
+                        : selectedAudit.status === "In Progress"
+                        ? "Hold daily stand-ups to unblock evidence collection and monitor risk hotspots."
+                        : "Confirm kickoff logistics, stakeholder communications, and evidence readiness."}
+                    </li>
+                    <li>
+                      {`Address ${selectedAudit.risk_level.toLowerCase()}-risk areas impacting ${selectedAudit.departments.join(", ")}.`}
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            ) : null}
+            <DialogFooter>
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-between sm:gap-3">
+                <Button variant="ghost" onClick={() => handleDialogOpenChange(false)}>
+                  Close
+                </Button>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <Button
+                    variant="outline"
+                    onClick={() => (selectedAudit ? handleExportSchedule(selectedAudit) : undefined)}
+                    disabled={!selectedAudit}
+                  >
+                    Export schedule
+                  </Button>
+                  <Button onClick={() => handleExportPlan(selectedAudit)} disabled={!selectedAudit}>
+                    Export plan
+                  </Button>
+                </div>
+              </div>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </DashboardLayout>
   )
