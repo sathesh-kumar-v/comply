@@ -108,7 +108,12 @@ export default function CorrectiveActionsPage() {
   const [otherDepartment, setOtherDepartment] = useState<string>("")
   const [formError, setFormError] = useState<string | null>(null)
 
-  const highPriorityActions = useMemo(() => actions.filter((action) => action.priority === "High" || action.priority === "Critical"), [actions])
+  const highPriorityActions = useMemo(
+    () => actions.filter((action) => action.priority === "High" || action.priority === "Critical"),
+    [actions]
+  )
+
+  const hasActions = actions.length > 0
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -273,6 +278,61 @@ export default function CorrectiveActionsPage() {
                     ))}
                   </TableBody>
                 </Table>
+              </CardContent>
+            </Card>
+
+            <Card className="border-emerald-100 shadow-sm">
+              <CardHeader>
+                <CardTitle className="text-primary">All Actions</CardTitle>
+                <CardDescription>Review every corrective action and its current progress.</CardDescription>
+              </CardHeader>
+              <CardContent className="overflow-x-auto">
+                {hasActions ? (
+                  <Table>
+                    <TableHeader className="bg-emerald-50/70 text-primary">
+                      <TableRow className="uppercase text-xs tracking-wide">
+                        <TableHead className="px-4">ID</TableHead>
+                        <TableHead className="px-4">Title</TableHead>
+                        <TableHead className="px-4">Type</TableHead>
+                        <TableHead className="px-4">Department</TableHead>
+                        <TableHead className="px-4">Priority</TableHead>
+                        <TableHead className="px-4">Status</TableHead>
+                        <TableHead className="px-4">Owner</TableHead>
+                        <TableHead className="px-4">Due Date</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {actions.map((action) => (
+                        <TableRow key={action.id}>
+                          <TableCell className="font-medium text-gray-900">{action.id}</TableCell>
+                          <TableCell className="text-sm text-gray-700">{action.title}</TableCell>
+                          <TableCell className="text-xs text-gray-500">{action.type}</TableCell>
+                          <TableCell className="text-xs text-gray-500">{action.department}</TableCell>
+                          <TableCell>
+                            <Badge
+                              className={
+                                action.priority === "Critical"
+                                  ? "bg-red-100 text-red-700"
+                                  : action.priority === "High"
+                                    ? "bg-orange-100 text-orange-700"
+                                    : action.priority === "Medium"
+                                      ? "bg-yellow-100 text-yellow-700"
+                                      : "bg-green-100 text-green-700"
+                              }
+                            >
+                              {action.priority}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-xs text-gray-500">{action.status}</TableCell>
+                          <TableCell className="text-xs text-gray-500">{action.owner}</TableCell>
+                          <TableCell className="text-xs text-gray-500">{action.dueDate}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                ) : (
+                  <p className="text-sm text-gray-500">Create a corrective action to populate the dashboard.</p>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
