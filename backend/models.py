@@ -1064,3 +1064,108 @@ class TaskDependency(Base):
     id = Column(Integer, primary_key=True)
     predecessor_id = Column(Integer, ForeignKey("project_tasks.id", ondelete="CASCADE"), index=True)
     successor_id = Column(Integer, ForeignKey("project_tasks.id", ondelete="CASCADE"), index=True)
+
+
+# --- Country Risk Assessment Models ---
+
+
+class RiskAssessmentStatus(PyEnum):
+    DRAFT = "Draft"
+    SCHEDULED = "Scheduled"
+    IN_PROGRESS = "In Progress"
+    COMPLETED = "Completed"
+
+
+class DataSourceType(PyEnum):
+    INTERNAL = "Internal"
+    EXTERNAL = "External"
+    COMBINED = "Combined"
+
+
+class RiskTrendEnum(PyEnum):
+    IMPROVING = "Improving"
+    STABLE = "Stable"
+    DETERIORATING = "Deteriorating"
+
+
+class ConfidenceLevelEnum(PyEnum):
+    LOW = "Low"
+    MEDIUM = "Medium"
+    HIGH = "High"
+
+
+class UpdateSourceEnum(PyEnum):
+    MANUAL = "Manual"
+    EXTERNAL = "External Data"
+    AI = "AI Analysis"
+
+
+class RiskAssessment(Base):
+    __tablename__ = "risk_assessments"
+
+    id = Column(Integer, primary_key=True)
+    title = Column(String(200), nullable=False)
+    assessment_type = Column(String(120), nullable=False)
+    framework = Column(String(120), nullable=True)
+    scoring_scale = Column(String(20), nullable=False, default="1-100")
+    update_frequency = Column(String(32), nullable=False)
+    data_source = Column(Enum(DataSourceType), nullable=False, default=DataSourceType.COMBINED)
+    start_date = Column(Date, nullable=False)
+    end_date = Column(Date, nullable=False)
+    assigned_assessor = Column(String(120), nullable=False)
+    review_team = Column(JSON, nullable=True)
+    status = Column(Enum(RiskAssessmentStatus), nullable=False, default=RiskAssessmentStatus.SCHEDULED)
+    categories_config = Column(JSON, nullable=False)
+    impact_levels = Column(JSON, nullable=True)
+    probability_levels = Column(JSON, nullable=True)
+    ai_recommendations = Column(JSON, nullable=True)
+    next_assessment_due = Column(Date, nullable=True)
+    external_data_sources = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    countries = relationship("CountryRiskProfile", back_populates="assessment", cascade="all, delete-orphan")
+
+
+class CountryRiskProfile(Base):
+    __tablename__ = "country_risk_profiles"
+
+    id = Column(Integer, primary_key=True)
+    assessment_id = Column(Integer, ForeignKey("risk_assessments.id", ondelete="CASCADE"), nullable=False)
+    country_code = Column(String(2), nullable=False)
+    country_name = Column(String(120), nullable=False)
+    overall_score = Column(Float, nullable=False)
+    risk_level = Column(String(32), nullable=False)
+    trend = Column(Enum(RiskTrendEnum), nullable=False)
+    confidence = Column(Enum(ConfidenceLevelEnum), nullable=False)
+    impact_level = Column(String(64), nullable=True)
+    probability_level = Column(String(64), nullable=True)
+    evidence = Column(Text, nullable=True)
+    comments = Column(Text, nullable=True)
+    update_source = Column(Enum(UpdateSourceEnum), nullable=False, default=UpdateSourceEnum.MANUAL)
+    next_assessment_due = Column(Date, nullable=True)
+    last_updated = Column(DateTime, default=datetime.utcnow, nullable=False)
+    ai_alerts = Column(JSON, nullable=True)
+    supporting_signals = Column(JSON, nullable=True)
+    attachments = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    recent_change = Column(Float, nullable=True)
+
+    assessment = relationship("RiskAssessment", back_populates="countries")
+    categories = relationship("CountryRiskCategoryScore", back_populates="country", cascade="all, delete-orphan")
+
+
+class CountryRiskCategoryScore(Base):
+    __tablename__ = "country_risk_category_scores"
+
+    id = Column(Integer, primary_key=True)
+    country_id = Column(Integer, ForeignKey("country_risk_profiles.id", ondelete="CASCADE"), nullable=False)
+    name = Column(String(120), nullable=False)
+    score = Column(Float, nullable=False)
+    weight = Column(Float, nullable=True)
+    ai_suggestion = Column(Float, nullable=True)
+    volatility = Column(Float, nullable=True)
+    trend = Column(Enum(RiskTrendEnum), nullable=True)
+
+    country = relationship("CountryRiskProfile", back_populates="categories")
