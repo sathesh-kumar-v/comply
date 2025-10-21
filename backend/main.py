@@ -184,6 +184,11 @@ try:
 except Exception:
     risk_assessment_router = None
 
+try:
+    from app.routes.incident_reporting import router as incident_reporting_router
+except Exception:
+    incident_reporting_router = None
+
 # ⬇️ import your models Base and engine
 from models import Base
 from database import engine
@@ -271,6 +276,9 @@ if document_ai_router:
 
 if risk_assessment_router:
     app.include_router(risk_assessment_router)
+
+if incident_reporting_router:
+    app.include_router(incident_reporting_router)
 
 # Optional: manual init endpoint if you ever need to click it
 @app.post("/api/dev/init-db", tags=["health"])

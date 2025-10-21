@@ -357,3 +357,5 @@ export async function api<T>(path: string, init: FetchOptions = {}): Promise<T> 
 
   return parseJsonSafely<T>(res);
 }
+
+export const buildApiUrl = buildUrl;
