@@ -386,12 +386,17 @@ export default function CountryRiskPage() {
     setAssessments([...data])
   }
 
+  const exitOfflineMode = () => {
+    if (isOfflineMode) {
+      setIsOfflineMode(false)
+      hasShownOfflineNoticeRef.current = false
+    }
+  }
+
   const fetchDashboard = async (params?: { riskType?: string; dataSource?: string }) => {
     if (typeof window === "undefined") return
-    if (isOfflineMode || !isApiBaseConfigured()) {
-      if (!isOfflineMode) {
-        activateOfflineMode()
-      }
+    if (!isApiBaseConfigured()) {
+      activateOfflineMode()
       loadOfflineDashboard(params)
       return
     }
@@ -405,6 +410,7 @@ export default function CountryRiskPage() {
       if (!response.ok) throw new Error("Unable to load dashboard data")
       const data: RiskDashboardData = await response.json()
       setDashboardData(data)
+      exitOfflineMode()
       if (!selectedCountry && data.map.countries.length) {
         setSelectedCountry(data.map.countries[0].code)
       }
@@ -426,10 +432,8 @@ export default function CountryRiskPage() {
   }
 
   const fetchAssessments = async () => {
-    if (isOfflineMode || !isApiBaseConfigured()) {
-      if (!isOfflineMode) {
-        activateOfflineMode()
-      }
+    if (!isApiBaseConfigured()) {
+      activateOfflineMode()
       loadOfflineAssessments()
       return
     }
@@ -439,6 +443,7 @@ export default function CountryRiskPage() {
       if (!response.ok) throw new Error("Unable to load assessments")
       const data: RiskAssessmentListItem[] = await response.json()
       setAssessments(data)
+      exitOfflineMode()
     } catch (error) {
       console.error(error)
       if (error instanceof TypeError) {
