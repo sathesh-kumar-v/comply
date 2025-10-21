@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -13,9 +13,10 @@ import { Progress } from "@/components/ui/progress"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
-import { buildApiUrl } from "@/lib/api-url"
+import { buildApiUrl, isApiBaseConfigured } from "@/lib/api-url"
 import { cn } from "@/lib/utils"
 import type { RiskAssessmentCountryDetail, RiskAssessmentDetail } from "@/types/risk"
+import { getOfflineAssessmentDetail } from "@/data/risk-assessment"
 import {
   Activity,
   AlertCircle,
@@ -54,9 +55,11 @@ const TREND_OPTIONS = ["Improving", "Stable", "Deteriorating"]
 const CONFIDENCE_OPTIONS = ["High", "Medium", "Low"]
 const UPDATE_SOURCE_OPTIONS = ["Manual", "External Data", "AI Analysis"]
 
-export default function RiskAssessmentExecutionPage({ params }: { params: { assessmentId: string } }) {
+export default function RiskAssessmentExecutionPage() {
   const router = useRouter()
-  const { assessmentId } = params
+  const params = useParams<{ assessmentId: string }>()
+  const assessmentIdParam = params?.assessmentId
+  const assessmentId = Array.isArray(assessmentIdParam) ? assessmentIdParam[0] : assessmentIdParam
   const [assessment, setAssessment] = useState<RiskAssessmentDetail | null>(null)
   const [selectedCountryCode, setSelectedCountryCode] = useState<string | null>(null)
   const [countryForms, setCountryForms] = useState<Record<string, CountryFormState>>({})
@@ -70,49 +73,81 @@ export default function RiskAssessmentExecutionPage({ params }: { params: { asse
   } | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
+  const initializeWorkspace = (data: RiskAssessmentDetail) => {
+    setAssessment(data)
+    if (!selectedCountryCode && data.countries.length > 0) {
+      setSelectedCountryCode(data.countries[0].countryCode)
+    }
+    const nextForms: Record<string, CountryFormState> = {}
+    data.countries.forEach((country) => {
+      nextForms[country.countryCode] = {
+        trend: country.trend,
+        confidence: country.confidence,
+        impactLevel: country.impactLevel ?? "Medium",
+        probabilityLevel: country.probabilityLevel ?? "Possible",
+        evidence: country.evidence ?? "",
+        comments: country.comments ?? "",
+        updateSource: country.updateSource,
+        categories: country.categories.map((category) => ({ ...category })),
+        attachments: (country.attachments || []).map((attachment) => ({
+          name: typeof attachment.name === "string" ? attachment.name : "Attachment",
+          size: typeof attachment.size === "number" ? attachment.size : undefined,
+        })),
+      }
+    })
+    setCountryForms(nextForms)
+  }
+
+  const loadOfflineAssessment = () => {
+    if (!assessmentId) return
+    const offline = getOfflineAssessmentDetail(assessmentId)
+    initializeWorkspace(offline)
+    setFeedback((current) =>
+      current && current.type === "success"
+        ? current
+        : {
+            type: "success",
+            title: "Loaded offline assessment sample",
+            details: [
+              "Using embedded risk data because the live service could not be reached.",
+              "Refresh once connectivity is restored to sync with the backend.",
+            ],
+          }
+    )
+  }
+
   const fetchAssessment = async () => {
+    if (!assessmentId) return
     setIsLoading(true)
     try {
+      if (!isApiBaseConfigured()) {
+        loadOfflineAssessment()
+        return
+      }
       const response = await fetch(buildApiUrl(`/api/risk-assessment/assessments/${assessmentId}`))
       if (!response.ok) throw new Error("Unable to load assessment")
       const data: RiskAssessmentDetail = await response.json()
-      setAssessment(data)
-      if (!selectedCountryCode && data.countries.length > 0) {
-        setSelectedCountryCode(data.countries[0].countryCode)
-      }
-      const nextForms: Record<string, CountryFormState> = {}
-      data.countries.forEach((country) => {
-        nextForms[country.countryCode] = {
-          trend: country.trend,
-          confidence: country.confidence,
-          impactLevel: country.impactLevel ?? "Medium",
-          probabilityLevel: country.probabilityLevel ?? "Possible",
-          evidence: country.evidence ?? "",
-          comments: country.comments ?? "",
-          updateSource: country.updateSource,
-          categories: country.categories.map((category) => ({ ...category })),
-          attachments: (country.attachments || []).map((attachment) => ({
-            name: typeof attachment.name === "string" ? attachment.name : "Attachment",
-            size: typeof attachment.size === "number" ? attachment.size : undefined,
-          })),
-        }
-      })
-      setCountryForms(nextForms)
+      initializeWorkspace(data)
     } catch (error) {
-      console.error(error)
-      setFeedback({
-        type: "error",
-        title: "Unable to load assessment",
-        details: ["Please verify the assessment ID and backend availability."],
-      })
+      if (error instanceof TypeError) {
+        loadOfflineAssessment()
+      } else {
+        console.error(error)
+        setFeedback({
+          type: "error",
+          title: "Unable to load assessment",
+          details: ["Please verify the assessment ID and backend availability."],
+        })
+      }
     } finally {
       setIsLoading(false)
     }
   }
 
   useEffect(() => {
-    if (typeof window === "undefined") return
+    if (typeof window === "undefined" || !assessmentId) return
     fetchAssessment()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assessmentId])
 
   const selectedCountry = useMemo(() => {

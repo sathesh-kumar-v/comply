@@ -18,7 +18,7 @@ import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
-import { buildApiUrl } from "@/lib/api-url"
+import { buildApiUrl, isApiBaseConfigured } from "@/lib/api-url"
 import { mapDimensions, projectPoint, getRiskColor, formatNumber } from "@/lib/risk-utils"
 import type { RiskAssessmentListItem, RiskDashboardData } from "@/types/risk"
 import { createMockDashboard, getOfflineAssessments } from "@/data/risk-assessment"
@@ -388,7 +388,10 @@ export default function CountryRiskPage() {
 
   const fetchDashboard = async (params?: { riskType?: string; dataSource?: string }) => {
     if (typeof window === "undefined") return
-    if (isOfflineMode) {
+    if (isOfflineMode || !isApiBaseConfigured()) {
+      if (!isOfflineMode) {
+        activateOfflineMode()
+      }
       loadOfflineDashboard(params)
       return
     }
@@ -423,7 +426,10 @@ export default function CountryRiskPage() {
   }
 
   const fetchAssessments = async () => {
-    if (isOfflineMode) {
+    if (isOfflineMode || !isApiBaseConfigured()) {
+      if (!isOfflineMode) {
+        activateOfflineMode()
+      }
       loadOfflineAssessments()
       return
     }
