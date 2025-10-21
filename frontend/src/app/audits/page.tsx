@@ -148,8 +148,19 @@ function buildWeek(reference: Date): CalendarDay[] {
   })
 }
 
+function createDateFromISODate(value: string): Date {
+  const [datePart] = value.split("T")
+  const [year, month, day] = datePart.split("-").map(Number)
+
+  if (Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)) {
+    return new Date(value)
+  }
+
+  return new Date(year, month - 1, day)
+}
+
 function formatDisplayDate(value: string): string {
-  const date = new Date(value)
+  const date = createDateFromISODate(value)
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric" })
 }
 
@@ -526,8 +537,8 @@ export default function AuditsPage() {
   const calendarEvents = useMemo(() => {
     return audits.map((audit) => ({
       ...audit,
-      start: new Date(audit.start_date),
-      end: new Date(audit.end_date),
+      start: createDateFromISODate(audit.start_date),
+      end: createDateFromISODate(audit.end_date),
       primaryDepartment: audit.departments[0] ?? "",
     }))
   }, [audits])
