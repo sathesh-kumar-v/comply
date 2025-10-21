@@ -142,6 +142,9 @@
 #     return {"message": "Comply-X API is running"}
 
 # main.py
+import os
+from typing import Set
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -193,12 +196,26 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-ALLOWED_ORIGINS = [
+DEFAULT_ALLOWED_ORIGINS: Set[str] = {
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-]
+    # Production frontend currently deployed on Render
+    "https://comply-x-tyle.onrender.com",
+    # Allow same-origin calls when the frontend is served from the API host
+    "https://comply-x.onrender.com",
+}
+
+
+def _load_additional_cors_origins() -> Set[str]:
+    raw = os.getenv("CORS_ALLOWED_ORIGINS", "")
+    if not raw:
+        return set()
+    return {origin.strip() for origin in raw.split(",") if origin.strip()}
+
+
+ALLOWED_ORIGINS = sorted(DEFAULT_ALLOWED_ORIGINS | _load_additional_cors_origins())
 
 app.add_middleware(
     CORSMiddleware,
