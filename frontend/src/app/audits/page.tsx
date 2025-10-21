@@ -81,6 +81,27 @@ const calendarViews: Array<{ label: string; value: "month" | "week" | "day" }> =
 
 const questionTypes = ["Yes/No", "Multiple Choice", "Text", "Rating", "Evidence"]
 
+function sanitizeChecklistSections(sections: ChecklistSection[]): ChecklistSection[] {
+  return sections.map((section) => ({
+    ...section,
+    required: Boolean(section.required),
+    questions: (section.questions ?? []).map((question) => {
+      const evidenceValue = question.evidence_required
+      const normalizedEvidence = typeof evidenceValue === "boolean" ? evidenceValue : Boolean(evidenceValue)
+      const normalizedGuidance =
+        typeof evidenceValue === "string" && evidenceValue.trim().length > 0 && !question.guidance_notes
+          ? evidenceValue.trim()
+          : question.guidance_notes
+
+      return {
+        ...question,
+        evidence_required: normalizedEvidence,
+        guidance_notes: normalizedGuidance,
+      }
+    }),
+  }))
+}
+
 const meetingRooms = [
   "Virtual - Teams",
   "Executive Boardroom",
@@ -233,7 +254,7 @@ interface BasicInformationState {
   objective: string
   complianceFrameworks: string[]
   riskLevel: string
-  otherDepartment: string
+  otherDepartment?: string
 }
 
 interface SchedulingState {
@@ -286,7 +307,7 @@ export default function AuditsPage() {
     objective: "",
     complianceFrameworks: [],
     riskLevel: "Medium",
-    otherDepartment: "",
+    otherDepartment: undefined,
   })
 
   const [scheduling, setScheduling] = useState<SchedulingState>({
@@ -553,6 +574,7 @@ export default function AuditsPage() {
 
   const currentStep = wizardSteps[currentStepIndex]
   const currentProgress = currentStep.progress
+  const isLastStep = currentStepIndex === wizardSteps.length - 1
 
   const handleNavigateCalendar = (direction: -1 | 1) => {
     setCalendarReference((prev) => {
@@ -665,6 +687,9 @@ export default function AuditsPage() {
       return
     }
 
+    const sanitizedChecklistSections = sanitizeChecklistSections(checklistSections)
+    setChecklistSections(sanitizedChecklistSections)
+
     const payload: AuditCreatePayload = {
       title: basicInfo.title,
       audit_type: basicInfo.auditType,
@@ -682,7 +707,7 @@ export default function AuditsPage() {
       special_requirements: scheduling.specialRequirements || undefined,
       notification_settings: notificationSettings,
       notification_templates: notificationTemplates,
-      checklist_sections: checklistSections,
+      checklist_sections: sanitizedChecklistSections,
     }
 
     try {
@@ -698,7 +723,7 @@ export default function AuditsPage() {
         objective: "",
         complianceFrameworks: [],
         riskLevel: "Medium",
-        otherDepartment: "",
+        otherDepartment: undefined,
       })
       setScheduling({
         startDate: "",
@@ -1279,7 +1304,7 @@ export default function AuditsPage() {
                               setBasicInfo((prev) => ({ ...prev, otherDepartment: "" }))
                             } else {
                               handleAddValue(value, basicInfo.departments, (updated) =>
-                                setBasicInfo((prev) => ({ ...prev, departments: updated }))
+                                setBasicInfo((prev) => ({ ...prev, departments: updated, otherDepartment: undefined }))
                               )
                             }
                           }}
@@ -1317,21 +1342,37 @@ export default function AuditsPage() {
                           </div>
                         ) : null}
                         {basicInfo.otherDepartment !== undefined ? (
-                          <Input
-                            className="mt-2"
-                            placeholder="Enter department"
-                            value={basicInfo.otherDepartment}
-                            onChange={(event) => {
-                              const value = event.target.value
-                              setBasicInfo((prev) => ({ ...prev, otherDepartment: value }))
-                              if (value.trim().length > 0) {
-                                setBasicInfo((prev) => ({
-                                  ...prev,
-                                  departments: Array.from(new Set([...prev.departments, value])),
-                                }))
+                          <div className="mt-2 flex items-center gap-2">
+                            <Input
+                              placeholder="Enter department"
+                              value={basicInfo.otherDepartment}
+                              onChange={(event) =>
+                                setBasicInfo((prev) => ({ ...prev, otherDepartment: event.target.value }))
                               }
-                            }}
-                          />
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") {
+                                  event.preventDefault()
+                                  const value = basicInfo.otherDepartment?.trim() ?? ""
+                                  if (!value) return
+                                  handleAddValue(value, basicInfo.departments, (updated) =>
+                                    setBasicInfo((prev) => ({ ...prev, departments: updated, otherDepartment: "" })),
+                                  )
+                                }
+                              }}
+                            />
+                            <Button
+                              type="button"
+                              onClick={() => {
+                                const value = basicInfo.otherDepartment?.trim() ?? ""
+                                if (!value) return
+                                handleAddValue(value, basicInfo.departments, (updated) =>
+                                  setBasicInfo((prev) => ({ ...prev, departments: updated, otherDepartment: "" })),
+                                )
+                              }}
+                            >
+                              Add
+                            </Button>
+                          </div>
                         ) : null}
                       </div>
                       <div className="space-y-2">
@@ -1464,7 +1505,16 @@ export default function AuditsPage() {
                           id="startDate"
                           type="date"
                           value={scheduling.startDate}
-                          onChange={(event) => setScheduling((prev) => ({ ...prev, startDate: event.target.value }))}
+                          onChange={(event) => {
+                            const value = event.target.value
+                            setScheduling((prev) => {
+                              const next: SchedulingState = { ...prev, startDate: value }
+                              if (prev.endDate && value && prev.endDate < value) {
+                                next.endDate = value
+                              }
+                              return next
+                            })
+                          }}
                         />
                       </div>
                       <div className="space-y-2">
@@ -1473,7 +1523,16 @@ export default function AuditsPage() {
                           id="endDate"
                           type="date"
                           value={scheduling.endDate}
-                          onChange={(event) => setScheduling((prev) => ({ ...prev, endDate: event.target.value }))}
+                          min={scheduling.startDate || undefined}
+                          onChange={(event) => {
+                            const value = event.target.value
+                            setScheduling((prev) => {
+                              if (prev.startDate && value && value < prev.startDate) {
+                                return { ...prev, endDate: prev.startDate }
+                              }
+                              return { ...prev, endDate: value }
+                            })
+                          }}
                         />
                       </div>
                       <div className="space-y-2">
@@ -1658,8 +1717,9 @@ export default function AuditsPage() {
                               departments: basicInfo.departments,
                             }),
                             (response) => {
+                              const normalizedSections = sanitizeChecklistSections(response.sections)
                               setChecklistSections(
-                                response.sections.map((section) => ({
+                                normalizedSections.map((section) => ({
                                   ...section,
                                   id: crypto.randomUUID(),
                                   questions: section.questions.map((question) => ({
@@ -2272,7 +2332,12 @@ export default function AuditsPage() {
                     <Button variant="outline" className="border-emerald-200" onClick={() => setReviewOption('draft')}>
                       Save as Draft
                     </Button>
-                    <Button className="bg-primary text-white" onClick={handleSubmit}>
+                    <Button
+                      className="bg-primary text-white"
+                      onClick={handleSubmit}
+                      disabled={!isLastStep}
+                      title={!isLastStep ? "Complete all steps before creating the audit" : undefined}
+                    >
                       Create Audit
                     </Button>
                   </div>
