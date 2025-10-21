@@ -18,6 +18,7 @@ import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
+import { buildApiUrl } from "@/lib/api-url"
 import { mapDimensions, projectPoint, getRiskColor, formatNumber } from "@/lib/risk-utils"
 import type { RiskAssessmentListItem, RiskDashboardData } from "@/types/risk"
 import { COUNTRY_OPTIONS, TEAM_MEMBERS } from "@/data/countries"
@@ -336,9 +337,11 @@ export default function CountryRiskPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const fetchDashboard = async (params?: { riskType?: string; dataSource?: string }) => {
+    if (typeof window === "undefined") return
     setIsLoadingDashboard(true)
     try {
-      const url = new URL("/api/risk-assessment/dashboard", window.location.origin)
+      const baseUrl = buildApiUrl("/api/risk-assessment/dashboard")
+      const url = new URL(baseUrl, window.location.origin)
       url.searchParams.set("riskType", params?.riskType ?? riskType)
       url.searchParams.set("dataSource", params?.dataSource ?? dataSource)
       const response = await fetch(url.toString())
@@ -363,7 +366,7 @@ export default function CountryRiskPage() {
   const fetchAssessments = async () => {
     setIsLoadingAssessments(true)
     try {
-      const response = await fetch("/api/risk-assessment/assessments")
+      const response = await fetch(buildApiUrl("/api/risk-assessment/assessments"))
       if (!response.ok) throw new Error("Unable to load assessments")
       const data: RiskAssessmentListItem[] = await response.json()
       setAssessments(data)
@@ -446,7 +449,7 @@ export default function CountryRiskPage() {
         dataSource: formState.dataSource,
       }
 
-      const response = await fetch("/api/risk-assessment/assessments", {
+      const response = await fetch(buildApiUrl("/api/risk-assessment/assessments"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

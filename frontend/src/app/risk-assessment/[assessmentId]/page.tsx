@@ -13,6 +13,7 @@ import { Progress } from "@/components/ui/progress"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
+import { buildApiUrl } from "@/lib/api-url"
 import { cn } from "@/lib/utils"
 import type { RiskAssessmentCountryDetail, RiskAssessmentDetail } from "@/types/risk"
 import {
@@ -72,7 +73,7 @@ export default function RiskAssessmentExecutionPage({ params }: { params: { asse
   const fetchAssessment = async () => {
     setIsLoading(true)
     try {
-      const response = await fetch(`/api/risk-assessment/assessments/${assessmentId}`)
+      const response = await fetch(buildApiUrl(`/api/risk-assessment/assessments/${assessmentId}`))
       if (!response.ok) throw new Error("Unable to load assessment")
       const data: RiskAssessmentDetail = await response.json()
       setAssessment(data)
@@ -192,7 +193,7 @@ export default function RiskAssessmentExecutionPage({ params }: { params: { asse
         })),
         attachments: selectedForm.attachments,
       }
-      const response = await fetch(`/api/risk-assessment/assessments/${assessment.id}/countries`, {
+      const response = await fetch(buildApiUrl(`/api/risk-assessment/assessments/${assessment.id}/countries`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -249,7 +250,7 @@ export default function RiskAssessmentExecutionPage({ params }: { params: { asse
     if (!assessment) return
     setIsRefreshing(true)
     try {
-      const response = await fetch(`/api/risk-assessment/assessments/${assessment.id}/ai-refresh`, {
+      const response = await fetch(buildApiUrl(`/api/risk-assessment/assessments/${assessment.id}/ai-refresh`), {
         method: "POST",
       })
       if (!response.ok) throw new Error("Unable to refresh AI intelligence")
