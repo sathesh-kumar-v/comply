@@ -171,6 +171,11 @@ try:
 except Exception:
     document_ai_router = None
 
+try:
+    from app.routes.audit_builder import router as audit_builder_router
+except Exception:
+    audit_builder_router = None
+
 # ⬇️ import your models Base and engine
 from models import Base
 from database import engine
@@ -228,6 +233,9 @@ app.include_router(fmea_router,                 prefix="/api",                  
 # app.include_router(calendar_module_router,      prefix="/api",                       tags=["calendar"])
 # app.include_router(calendar_ai_router,          prefix="/api",                       tags=["calendar-ai"])
 app.include_router(calendar_api_router)
+
+if audit_builder_router:
+    app.include_router(audit_builder_router)
 
 if calendar_ai_router:
     # most AI examples use router without a prefix; put it under /api
