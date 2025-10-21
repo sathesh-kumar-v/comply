@@ -428,6 +428,23 @@ export default function IncidentsPage() {
   const [loadingIncidentDetail, setLoadingIncidentDetail] = useState(false)
   const [aiAssessment, setAiAssessment] = useState<IncidentIntakeAssessmentResponse | null>(null)
   const [aiLoading, setAiLoading] = useState(false)
+  const [activityForm, setActivityForm] = useState({
+    activityType: "Interview",
+    description: "",
+    findings: "",
+    followUpRequired: false,
+  })
+  const [rcaForm, setRcaForm] = useState({
+    method: "5 Whys",
+    primary: "",
+    factors: [] as Array<{ description: string; category: string; impactLevel: IncidentSeverity }>,
+  })
+  const [factorDraft, setFactorDraft] = useState({
+    description: "",
+    category: "Human",
+    impactLevel: "Medium" as IncidentSeverity,
+  })
+  const factorCategories = ["Human", "Process", "System", "Environment"]
 
   const [formState, setFormState] = useState({
     title: "",
@@ -507,6 +524,19 @@ export default function IncidentsPage() {
       active = false
     }
   }, [selectedIncidentId])
+
+  useEffect(() => {
+    if (!selectedIncident) return
+    setRcaForm({
+      method: selectedIncident.rootCause.rcaMethod || "5 Whys",
+      primary: selectedIncident.rootCause.primaryRootCause || "",
+      factors: selectedIncident.rootCause.factors.map((factor) => ({
+        description: factor.description,
+        category: factor.category,
+        impactLevel: factor.impactLevel,
+      })),
+    })
+  }, [selectedIncident])
 
   useEffect(() => {
     const plain = formState.detailedDescriptionText
@@ -661,6 +691,57 @@ export default function IncidentsPage() {
   }, [aiAssessment, severityDescriptions])
 
   const investigationActivities = selectedIncident?.activities ?? []
+
+  const handleAddActivity = async () => {
+    if (!selectedIncidentId) return
+    try {
+      await addIncidentActivity(selectedIncidentId, {
+        activityType: activityForm.activityType,
+        description: activityForm.description,
+        findings: activityForm.findings,
+        followUpRequired: activityForm.followUpRequired,
+      })
+      setActivityForm({ activityType: "Interview", description: "", findings: "", followUpRequired: false })
+      const detail = await fetchIncidentDetail(selectedIncidentId)
+      setSelectedIncident(detail)
+    } catch (error) {
+      console.error("Failed to add activity", error)
+    }
+  }
+
+  const handleSaveRootCause = async () => {
+    if (!selectedIncidentId) return
+    try {
+      const payload = {
+        rcaMethod: rcaForm.method,
+        primaryRootCause: rcaForm.primary,
+        factors: rcaForm.factors,
+        rcaDiagram: selectedIncident?.rootCause.rcaDiagram ?? null,
+        rcaEvidence: selectedIncident?.rootCause.rcaEvidence ?? [],
+      }
+      const detail = await saveIncidentRootCause(selectedIncidentId, payload)
+      setSelectedIncident(detail)
+    } catch (error) {
+      console.error("Failed to save root cause", error)
+    }
+  }
+
+  const addFactor = () => {
+    if (!factorDraft.description.trim()) return
+    setRcaForm((prev) => ({
+      ...prev,
+      factors: [...prev.factors, { ...factorDraft, description: factorDraft.description.trim() }],
+    }))
+    setFactorDraft({ description: "", category: "Human", impactLevel: "Medium" as IncidentSeverity })
+  }
+
+  const removeFactor = (index: number) => {
+    setRcaForm((prev) => ({
+      ...prev,
+      factors: prev.factors.filter((_, i) => i !== index),
+    }))
+  }
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -1399,82 +1480,6 @@ export default function IncidentsPage() {
               </div>
             </div>
           </TabsContent>
-  const [activityForm, setActivityForm] = useState({
-    activityType: "Interview",
-    description: "",
-    findings: "",
-    followUpRequired: false,
-  })
-  const [rcaForm, setRcaForm] = useState({
-    method: "5 Whys",
-    primary: "",
-    factors: [] as Array<{ description: string; category: string; impactLevel: IncidentSeverity }>,
-  })
-
-  useEffect(() => {
-    if (!selectedIncident) return
-    setRcaForm({
-      method: selectedIncident.rootCause.rcaMethod || "5 Whys",
-      primary: selectedIncident.rootCause.primaryRootCause || "",
-      factors: selectedIncident.rootCause.factors.map((factor) => ({
-        description: factor.description,
-        category: factor.category,
-        impactLevel: factor.impactLevel,
-      })),
-    })
-  }, [selectedIncident])
-
-  const handleAddActivity = async () => {
-    if (!selectedIncidentId) return
-    try {
-      await addIncidentActivity(selectedIncidentId, {
-        activityType: activityForm.activityType,
-        description: activityForm.description,
-        findings: activityForm.findings,
-        followUpRequired: activityForm.followUpRequired,
-      })
-      setActivityForm({ activityType: "Interview", description: "", findings: "", followUpRequired: false })
-      const detail = await fetchIncidentDetail(selectedIncidentId)
-      setSelectedIncident(detail)
-    } catch (error) {
-      console.error("Failed to add activity", error)
-    }
-  }
-
-  const handleSaveRootCause = async () => {
-    if (!selectedIncidentId) return
-    try {
-      const payload = {
-        rcaMethod: rcaForm.method,
-        primaryRootCause: rcaForm.primary,
-        factors: rcaForm.factors,
-        rcaDiagram: selectedIncident?.rootCause.rcaDiagram ?? null,
-        rcaEvidence: selectedIncident?.rootCause.rcaEvidence ?? [],
-      }
-      const detail = await saveIncidentRootCause(selectedIncidentId, payload)
-      setSelectedIncident(detail)
-    } catch (error) {
-      console.error("Failed to save root cause", error)
-    }
-  }
-  const [factorDraft, setFactorDraft] = useState({ description: "", category: "Human", impactLevel: "Medium" as IncidentSeverity })
-  const factorCategories = ["Human", "Process", "System", "Environment"]
-
-  const addFactor = () => {
-    if (!factorDraft.description.trim()) return
-    setRcaForm((prev) => ({
-      ...prev,
-      factors: [...prev.factors, { ...factorDraft, description: factorDraft.description.trim() }],
-    }))
-    setFactorDraft({ description: "", category: "Human", impactLevel: "Medium" })
-  }
-
-  const removeFactor = (index: number) => {
-    setRcaForm((prev) => ({
-      ...prev,
-      factors: prev.factors.filter((_, i) => i !== index),
-    }))
-  }
           <TabsContent value="investigation" className="space-y-6">
             <div className="grid gap-6 lg:grid-cols-[1fr_2fr]">
               <Card className="shadow-sm">
