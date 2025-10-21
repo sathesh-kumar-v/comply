@@ -176,6 +176,11 @@ try:
 except Exception:
     audit_builder_router = None
 
+try:
+    from app.routes.risk_assessment import router as risk_assessment_router
+except Exception:
+    risk_assessment_router = None
+
 # ⬇️ import your models Base and engine
 from models import Base
 from database import engine
@@ -246,6 +251,9 @@ if fmea_ai_router:
 
 if document_ai_router:
     app.include_router(document_ai_router,     prefix="/api",                      tags=["documents-ai"])
+
+if risk_assessment_router:
+    app.include_router(risk_assessment_router)
 
 # Optional: manual init endpoint if you ever need to click it
 @app.post("/api/dev/init-db", tags=["health"])
