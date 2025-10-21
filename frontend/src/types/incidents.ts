@@ -201,4 +201,5 @@ export interface IncidentMetadataResponse {
   }>
   activityTypes: string[]
   rcaMethods: string[]
+  departments?: string[]
 }

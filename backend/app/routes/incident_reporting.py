@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from auth import get_current_user
 from database import get_db
 from models import (
+    Department,
     Incident,
     IncidentActivity,
     IncidentActivityType,
@@ -104,6 +105,17 @@ INCIDENT_CATEGORY_MAP: Dict[str, List[str]] = {
     ],
     "Other": ["General"],
 }
+
+DEFAULT_DEPARTMENTS = [
+    "Compliance",
+    "Operations",
+    "Human Resources",
+    "Finance",
+    "IT Security",
+    "Facilities",
+    "Legal",
+    "Customer Support",
+]
 
 SEVERITY_DETAILS: Dict[str, str] = {
     "Low": "Minor impact, no immediate action required",
@@ -466,8 +478,16 @@ def _auto_assess_severity(description: str, declared: IncidentSeverity) -> Dict[
 
 @router.get("/metadata")
 def get_incident_metadata(
+    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    departments = (
+        db.query(Department)
+        .filter(Department.is_active.is_(True))
+        .order_by(Department.name.asc())
+        .all()
+    )
+    department_names = [department.name for department in departments] or DEFAULT_DEPARTMENTS
     return {
         "incidentTypes": INCIDENT_TYPES,
         "incidentCategories": INCIDENT_CATEGORY_MAP,
@@ -477,6 +497,7 @@ def get_incident_metadata(
         "locationHierarchy": LOCATION_HIERARCHY,
         "activityTypes": [activity.value for activity in IncidentActivityType],
         "rcaMethods": ["5 Whys", "Fishbone", "Fault Tree", "Apollo", "Custom"],
+        "departments": department_names,
     }
 
 
