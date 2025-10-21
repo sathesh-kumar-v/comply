@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react';
+import { isAxiosError } from 'axios';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,11 +15,118 @@ import { useAuth } from '@/contexts/auth-context';
 import { useSettings } from '@/contexts/settings-context';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+
+const formatPermissionLevel = (level?: string | null) => {
+  if (!level) {
+    return '—';
+  }
+
+  return level
+    .split('_')
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(' ');
+};
 
 export default function SettingsPage() {
-  const { user } = useAuth();
+  const { user, updateProfile } = useAuth();
   const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'notifications' | 'appearance'>('profile');
   const { security, updateSecurity } = useSettings();
+  const [profileForm, setProfileForm] = useState({
+    firstName: '',
+    lastName: '',
+    username: '',
+    phone: '',
+  });
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [profileMessage, setProfileMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    setProfileForm({
+      firstName: user.first_name ?? '',
+      lastName: user.last_name ?? '',
+      username: user.username ?? '',
+      phone: user.phone ?? '',
+    });
+    setProfileMessage(null);
+  }, [user]);
+
+  const permissionLabel = useMemo(() => formatPermissionLevel(user?.permission_level), [user?.permission_level]);
+
+  const isProfileDirty = useMemo(() => {
+    if (!user) {
+      return false;
+    }
+
+    return (
+      profileForm.firstName !== (user.first_name ?? '') ||
+      profileForm.lastName !== (user.last_name ?? '') ||
+      profileForm.username !== (user.username ?? '') ||
+      profileForm.phone !== (user.phone ?? '')
+    );
+  }, [profileForm, user]);
+
+  const handleProfileChange = (field: keyof typeof profileForm) => (event: ChangeEvent<HTMLInputElement>) => {
+    if (profileMessage) {
+      setProfileMessage(null);
+    }
+
+    setProfileForm((previous) => ({
+      ...previous,
+      [field]: event.target.value,
+    }));
+  };
+
+  const handleProfileSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!user || !isProfileDirty) {
+      return;
+    }
+
+    setIsSavingProfile(true);
+    setProfileMessage(null);
+
+    try {
+      const trimmedPhone = profileForm.phone.trim();
+      const payload = {
+        first_name: profileForm.firstName.trim(),
+        last_name: profileForm.lastName.trim(),
+        username: profileForm.username.trim(),
+        phone: trimmedPhone,
+      };
+
+      const updatedUser = await updateProfile(payload);
+
+      setProfileForm({
+        firstName: updatedUser.first_name ?? '',
+        lastName: updatedUser.last_name ?? '',
+        username: updatedUser.username ?? '',
+        phone: updatedUser.phone ?? '',
+      });
+
+      setProfileMessage({ type: 'success', text: 'Profile details updated successfully.' });
+    } catch (error) {
+      let message = 'Unable to update profile. Please try again.';
+
+      if (isAxiosError(error)) {
+        const detail = error.response?.data?.detail;
+        if (typeof detail === 'string' && detail.trim().length > 0) {
+          message = detail;
+        }
+      } else if (error instanceof Error && error.message) {
+        message = error.message;
+      }
+
+      setProfileMessage({ type: 'error', text: message });
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
 
   return (
     <DashboardLayout>
@@ -33,9 +141,9 @@ export default function SettingsPage() {
               </p>
             </div>
             <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
-              {user?.permission_level && (
+              {permissionLabel !== '—' && (
                 <Badge variant="outline" className="border-emerald-200 bg-white/70 text-emerald-700">
-                  {user.permission_level.replace(/_/g, ' ')} access
+                  {permissionLabel} access
                 </Badge>
               )}
               <div className="rounded-xl border border-emerald-100 bg-white/70 px-4 py-3 shadow-sm">
@@ -139,9 +247,9 @@ export default function SettingsPage() {
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="profile" className="space-y-6">
-            <Card className="border border-emerald-100/80 bg-white/90 p-6 shadow-sm">
-              <div className="space-y-4">
+        <TabsContent value="profile" className="space-y-6">
+          <Card className="border border-emerald-100/80 bg-white/90 p-6 shadow-sm">
+            <form className="space-y-4" onSubmit={handleProfileSubmit}>
               <div>
                 <h3 className="text-lg font-semibold">Profile Information</h3>
                 <p className="text-sm text-gray-600">
@@ -149,22 +257,39 @@ export default function SettingsPage() {
                 </p>
               </div>
               <Separator />
-              
-              <div className="grid grid-cols-2 gap-4">
+
+              {profileMessage && (
+                <Alert
+                  variant={profileMessage.type === 'error' ? 'destructive' : 'default'}
+                  className={
+                    profileMessage.type === 'error'
+                      ? ''
+                      : 'border-emerald-200/70 bg-emerald-50/60 text-sm text-gray-700'
+                  }
+                >
+                  <AlertDescription>{profileMessage.text}</AlertDescription>
+                </Alert>
+              )}
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
                   <Label htmlFor="firstName">First Name</Label>
                   <Input
                     id="firstName"
-                    defaultValue={user?.first_name}
-                    disabled
+                    value={profileForm.firstName}
+                    onChange={handleProfileChange('firstName')}
+                    autoComplete="given-name"
+                    disabled={!user || isSavingProfile}
                   />
                 </div>
                 <div>
                   <Label htmlFor="lastName">Last Name</Label>
                   <Input
                     id="lastName"
-                    defaultValue={user?.last_name}
-                    disabled
+                    value={profileForm.lastName}
+                    onChange={handleProfileChange('lastName')}
+                    autoComplete="family-name"
+                    disabled={!user || isSavingProfile}
                   />
                 </div>
               </div>
@@ -174,7 +299,8 @@ export default function SettingsPage() {
                 <Input
                   id="email"
                   type="email"
-                  defaultValue={user?.email}
+                  value={user?.email ?? ''}
+                  readOnly
                   disabled
                 />
               </div>
@@ -183,25 +309,31 @@ export default function SettingsPage() {
                 <Label htmlFor="username">Username</Label>
                 <Input
                   id="username"
-                  defaultValue={user?.username}
-                  disabled
+                  value={profileForm.username}
+                  onChange={handleProfileChange('username')}
+                  autoComplete="username"
+                  disabled={!user || isSavingProfile}
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
                   <Label htmlFor="phone">Phone</Label>
                   <Input
                     id="phone"
-                    defaultValue={user?.phone || ''}
-                    disabled
+                    type="tel"
+                    value={profileForm.phone}
+                    onChange={handleProfileChange('phone')}
+                    autoComplete="tel"
+                    disabled={!user || isSavingProfile}
                   />
                 </div>
                 <div>
                   <Label htmlFor="position">Position</Label>
                   <Input
                     id="position"
-                    defaultValue={user?.position || ''}
+                    value={user?.position ?? ''}
+                    readOnly
                     disabled
                   />
                 </div>
@@ -211,18 +343,18 @@ export default function SettingsPage() {
                 <Label htmlFor="permissionLevel">Permission Level</Label>
                 <Input
                   id="permissionLevel"
-                  defaultValue={user?.permission_level?.replace(/_/g, ' ') || 'View only'}
+                  value={permissionLabel}
+                  readOnly
                   disabled
-                  className="capitalize"
                 />
               </div>
 
               <div className="flex justify-end">
-                <Button disabled>
-                  Save Changes
+                <Button type="submit" disabled={!user || !isProfileDirty || isSavingProfile}>
+                  {isSavingProfile ? 'Saving…' : 'Save Changes'}
                 </Button>
               </div>
-            </div>
+            </form>
           </Card>
         </TabsContent>
 

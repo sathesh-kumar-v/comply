@@ -114,6 +114,7 @@ class UserCreate(UserBase):
 class UserUpdate(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
+    username: Optional[str] = None
     phone: Optional[str] = None
     department: Optional[str] = None
     position: Optional[str] = None
@@ -130,6 +131,13 @@ class UserUpdate(BaseModel):
         if value is not None and len(value) < 8:
             raise ValueError('Password must be at least 8 characters long')
         return value
+
+
+class UserProfileUpdate(BaseModel):
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    username: Optional[str] = None
+    phone: Optional[str] = None
 
 class UserResponse(UserBase):
     id: int

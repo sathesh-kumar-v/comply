@@ -1,7 +1,13 @@
 "use client"
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react'
-import { authService, User, LoginCredentials, RegisterData } from '@/lib/auth'
+import {
+  authService,
+  User,
+  LoginCredentials,
+  RegisterData,
+  UpdateCurrentUserPayload
+} from '@/lib/auth'
 
 interface AuthContextType {
   user: User | null
@@ -11,6 +17,7 @@ interface AuthContextType {
   register: (userData: RegisterData) => Promise<void>
   logout: () => void
   isAuthenticated: boolean
+  updateProfile: (updates: UpdateCurrentUserPayload) => Promise<User>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -93,6 +100,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
     authService.logout()
   }
 
+  const updateProfile = async (updates: UpdateCurrentUserPayload) => {
+    const updatedUser = await authService.updateCurrentUser(updates)
+    setUser(updatedUser)
+    return updatedUser
+  }
+
   const value: AuthContextType = {
     user,
     loading,
@@ -101,6 +114,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     register,
     logout,
     isAuthenticated: !!user,
+    updateProfile,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
