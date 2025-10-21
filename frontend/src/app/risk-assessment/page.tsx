@@ -21,6 +21,7 @@ import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { buildApiUrl } from "@/lib/api-url"
 import { mapDimensions, projectPoint, getRiskColor, formatNumber } from "@/lib/risk-utils"
 import type { RiskAssessmentListItem, RiskDashboardData } from "@/types/risk"
+import { createMockDashboard, getOfflineAssessments } from "@/data/risk-assessment"
 import { COUNTRY_OPTIONS, TEAM_MEMBERS } from "@/data/countries"
 import { cn } from "@/lib/utils"
 import {
@@ -326,6 +327,7 @@ export default function CountryRiskPage() {
   const [selectedCountry, setSelectedCountry] = useState<string | null>(null)
   const [isLoadingDashboard, setIsLoadingDashboard] = useState(false)
   const [isLoadingAssessments, setIsLoadingAssessments] = useState(false)
+  const [isOfflineMode, setIsOfflineMode] = useState(false)
   const [formState, setFormState] = useState<FormState>({ ...DEFAULT_FORM })
   const [categoryConfig, setCategoryConfig] = useState(DEFAULT_CATEGORY_CONFIG)
   const [attachments, setAttachments] = useState<AttachmentPreview[]>([])
@@ -335,9 +337,61 @@ export default function CountryRiskPage() {
     details: string[]
   } | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const offlineAssessmentsRef = useRef<RiskAssessmentListItem[] | null>(null)
+  const hasShownOfflineNoticeRef = useRef(false)
+
+  const ensureOfflineAssessments = (): RiskAssessmentListItem[] => {
+    if (!offlineAssessmentsRef.current) {
+      offlineAssessmentsRef.current = getOfflineAssessments()
+    }
+    return offlineAssessmentsRef.current!
+  }
+
+  const activateOfflineMode = (message?: { title: string; details: string[] }) => {
+    setIsOfflineMode(true)
+    if (!hasShownOfflineNoticeRef.current) {
+      hasShownOfflineNoticeRef.current = true
+      setLaunchFeedback((current) =>
+        current && current.type === "success"
+          ? current
+          : {
+              type: "error",
+              title: message?.title ?? "Live risk data unavailable",
+              details:
+                message?.details ?? [
+                  "We couldn't reach the risk assessment API.",
+                  "Showing intelligent sample data so you can continue working while offline."
+                ]
+            }
+      )
+    }
+  }
+
+  const loadOfflineDashboard = (params?: { riskType?: string; dataSource?: string }) => {
+    const mock = createMockDashboard({
+      riskType: params?.riskType ?? riskType,
+      dataSource: params?.dataSource ?? dataSource
+    })
+    setDashboardData(mock)
+    setSelectedCountry((current) => {
+      if (current && mock.map.countries.some((country) => country.code === current)) {
+        return current
+      }
+      return mock.map.countries[0]?.code ?? null
+    })
+  }
+
+  const loadOfflineAssessments = () => {
+    const data = ensureOfflineAssessments()
+    setAssessments([...data])
+  }
 
   const fetchDashboard = async (params?: { riskType?: string; dataSource?: string }) => {
     if (typeof window === "undefined") return
+    if (isOfflineMode) {
+      loadOfflineDashboard(params)
+      return
+    }
     setIsLoadingDashboard(true)
     try {
       const baseUrl = buildApiUrl("/api/risk-assessment/dashboard")
@@ -353,17 +407,26 @@ export default function CountryRiskPage() {
       }
     } catch (error) {
       console.error(error)
-      setLaunchFeedback({
-        type: "error",
-        title: "Unable to refresh dashboard",
-        details: ["Check network connectivity or backend availability and try again."],
-      })
+      if (error instanceof TypeError) {
+        activateOfflineMode()
+        loadOfflineDashboard(params)
+      } else {
+        setLaunchFeedback({
+          type: "error",
+          title: "Unable to refresh dashboard",
+          details: ["Check network connectivity or backend availability and try again."],
+        })
+      }
     } finally {
       setIsLoadingDashboard(false)
     }
   }
 
   const fetchAssessments = async () => {
+    if (isOfflineMode) {
+      loadOfflineAssessments()
+      return
+    }
     setIsLoadingAssessments(true)
     try {
       const response = await fetch(buildApiUrl("/api/risk-assessment/assessments"))
@@ -372,6 +435,10 @@ export default function CountryRiskPage() {
       setAssessments(data)
     } catch (error) {
       console.error(error)
+      if (error instanceof TypeError) {
+        activateOfflineMode()
+        loadOfflineAssessments()
+      }
     } finally {
       setIsLoadingAssessments(false)
     }
@@ -426,6 +493,41 @@ export default function CountryRiskPage() {
     }
 
     try {
+      if (isOfflineMode) {
+        const newAssessment: RiskAssessmentListItem = {
+          id: Date.now(),
+          title: trimmedTitle,
+          assessmentType: formState.assessmentType,
+          status: "Scheduled",
+          startDate: formState.startDate,
+          endDate: formState.endDate,
+          nextAssessmentDue: formState.endDate,
+          totalCountries: formState.selectedCountryCodes.length,
+          highRiskCountries: Math.max(1, Math.round(formState.selectedCountryCodes.length / 3)),
+          assignedAssessor: formState.assessor,
+        }
+        const offlineData = ensureOfflineAssessments()
+        const updatedAssessments = [newAssessment, ...offlineData]
+        offlineAssessmentsRef.current = updatedAssessments
+        setAssessments([...updatedAssessments])
+        loadOfflineDashboard()
+        setLaunchFeedback({
+          type: "success",
+          title: "Risk assessment scheduled (offline mode)",
+          details: [
+            `${trimmedTitle} has been staged locally with ${formState.selectedCountryCodes.length} country scope.`,
+            `Assigned assessor: ${formState.assessor}.`,
+            `Update cadence: ${formState.updateFrequency}.`,
+            "The request will sync once the risk API is reachable.",
+          ],
+        })
+        setFormState({ ...DEFAULT_FORM, assessmentType: formState.assessmentType, updateFrequency: formState.updateFrequency })
+        setCategoryConfig(DEFAULT_CATEGORY_CONFIG)
+        setAttachments([])
+        setActiveTab("dashboard")
+        return
+      }
+
       const payload = {
         title: trimmedTitle,
         assessmentType: formState.assessmentType,
@@ -457,7 +559,7 @@ export default function CountryRiskPage() {
 
       if (!response.ok) throw new Error("Failed to create assessment")
 
-      const created = await response.json()
+      await response.json()
 
       setLaunchFeedback({
         type: "success",
@@ -478,11 +580,52 @@ export default function CountryRiskPage() {
       setActiveTab("dashboard")
     } catch (error) {
       console.error(error)
-      setLaunchFeedback({
-        type: "error",
-        title: "Unable to create assessment",
-        details: ["Check inputs and backend availability. If the problem persists contact system administrator."],
-      })
+      if (error instanceof TypeError) {
+        activateOfflineMode({
+          title: "Risk API unreachable",
+          details: [
+            "We could not send the assessment to the server.",
+            "Captured the request locally so you can continue planning while offline.",
+          ],
+        })
+        const offlineData = ensureOfflineAssessments()
+        const stagedAssessment: RiskAssessmentListItem = {
+          id: Date.now(),
+          title: trimmedTitle,
+          assessmentType: formState.assessmentType,
+          status: "Scheduled",
+          startDate: formState.startDate,
+          endDate: formState.endDate,
+          nextAssessmentDue: formState.endDate,
+          totalCountries: formState.selectedCountryCodes.length,
+          highRiskCountries: Math.max(1, Math.round(formState.selectedCountryCodes.length / 3)),
+          assignedAssessor: formState.assessor,
+        }
+        const stagedList = [stagedAssessment, ...offlineData]
+        offlineAssessmentsRef.current = stagedList
+        setAssessments([...stagedList])
+        loadOfflineDashboard()
+        setLaunchFeedback({
+          type: "success",
+          title: "Risk assessment staged for sync",
+          details: [
+            `${trimmedTitle} has been saved locally with ${formState.selectedCountryCodes.length} country scope.`,
+            `Assigned assessor: ${formState.assessor}.`,
+            `Update cadence: ${formState.updateFrequency}.`,
+            "It will be submitted automatically when the connection is restored.",
+          ],
+        })
+        setFormState({ ...DEFAULT_FORM, assessmentType: formState.assessmentType, updateFrequency: formState.updateFrequency })
+        setCategoryConfig(DEFAULT_CATEGORY_CONFIG)
+        setAttachments([])
+        setActiveTab("dashboard")
+      } else {
+        setLaunchFeedback({
+          type: "error",
+          title: "Unable to create assessment",
+          details: ["Check inputs and backend availability. If the problem persists contact system administrator."],
+        })
+      }
     }
   }
 
