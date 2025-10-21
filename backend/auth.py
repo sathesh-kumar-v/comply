@@ -18,7 +18,7 @@ from schemas import (
     UserCreate, UserLogin, Token, UserResponse, TokenData,
     PasswordResetRequest, PasswordResetConfirm, MFASetupRequest,
     MFASetupResponse, MFAVerifyRequest, MFALoginRequest, MFAStatusResponse,
-    GoogleOAuthRequest, UserUpdate
+    GoogleOAuthRequest, UserUpdate, UserProfileUpdate
 )
 from email_service import email_service
 import os
@@ -379,7 +379,7 @@ async def oauth_google_login(
         user=UserResponse.model_validate(user)
     )
 
-@router.get("/me", 
+@router.get("/me",
             response_model=UserResponse,
             summary="Get Current User",
             description="Get information about the currently authenticated user.",
@@ -388,6 +388,51 @@ async def oauth_google_login(
                 401: {"description": "Not authenticated"},
             })
 async def get_current_user_info(current_user: User = Depends(get_current_user)):
+    return UserResponse.model_validate(current_user)
+
+
+@router.patch(
+    "/me",
+    response_model=UserResponse,
+    summary="Update Current User",
+    description="Update personal profile details for the authenticated user.",
+)
+async def update_current_user_profile(
+    payload: UserProfileUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    update_data = payload.model_dump(exclude_unset=True)
+
+    if "username" in update_data:
+        new_username = update_data.pop("username")
+        if new_username and new_username != current_user.username:
+            existing_user = (
+                db.query(User)
+                .filter(User.username == new_username, User.id != current_user.id)
+                .first()
+            )
+            if existing_user:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Username already taken",
+                )
+            current_user.username = new_username
+
+    for field in ["first_name", "last_name", "phone"]:
+        if field in update_data:
+            value = update_data.pop(field)
+            if isinstance(value, str):
+                value = value.strip()
+            setattr(current_user, field, value)
+
+    # Ignore any unsupported fields gracefully
+    update_data.clear()
+
+    current_user.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(current_user)
+
     return UserResponse.model_validate(current_user)
 
 @router.get("/users",
@@ -452,6 +497,21 @@ async def update_user_details(
 
     if "permission_level" in update_data:
         db_user.permission_level = update_data.pop("permission_level")
+
+    if "username" in update_data:
+        new_username = update_data.pop("username")
+        if new_username and new_username != db_user.username:
+            existing_user = (
+                db.query(User)
+                .filter(User.username == new_username, User.id != db_user.id)
+                .first()
+            )
+            if existing_user:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Username already taken",
+                )
+            db_user.username = new_username
 
     for field in [
         "first_name",

@@ -77,6 +77,7 @@ export interface CreateUserPayload {
 export interface UpdateUserPayload {
   first_name?: string
   last_name?: string
+  username?: string
   phone?: string
   position?: string
   role?: User['role']
@@ -86,6 +87,13 @@ export interface UpdateUserPayload {
   notifications_sms?: boolean
   timezone?: string
   password?: string
+}
+
+export interface UpdateCurrentUserPayload {
+  first_name?: string
+  last_name?: string
+  username?: string
+  phone?: string
 }
 
 class AuthService {
@@ -214,6 +222,11 @@ class AuthService {
 
   async updateUser(userId: number, userData: UpdateUserPayload): Promise<User> {
     const response = await this.apiClient.put(`/auth/users/${userId}`, userData)
+    return response.data
+  }
+
+  async updateCurrentUser(userData: UpdateCurrentUserPayload): Promise<User> {
+    const response = await this.apiClient.patch('/auth/me', userData)
     return response.data
   }
 
