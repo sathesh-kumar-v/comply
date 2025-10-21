@@ -47,6 +47,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Separator } from "@/components/ui/separator"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Switch } from "@/components/ui/switch"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 import {
   addIncidentActivity,
@@ -156,6 +163,197 @@ const DEFAULT_ACTIVITY_TYPES = [
   "Research",
   "Other",
 ]
+
+const DEFAULT_INCIDENT_TYPES = [
+  "Safety Incident",
+  "Security Breach",
+  "Compliance Violation",
+  "Environmental Incident",
+  "Quality Issue",
+  "IT System Failure",
+  "Process Failure",
+  "Customer Complaint",
+  "Other",
+]
+
+const DEFAULT_INCIDENT_CATEGORY_MAP: IncidentMetadataResponse["incidentCategories"] = {
+  "Safety Incident": [
+    "Slips, Trips & Falls",
+    "Equipment Hazard",
+    "PPE Non-Compliance",
+    "Unsafe Condition",
+    "Other Safety",
+  ],
+  "Security Breach": [
+    "Unauthorized Access",
+    "Phishing",
+    "Data Exfiltration",
+    "Credential Compromise",
+    "Other Security",
+  ],
+  "Compliance Violation": [
+    "Regulatory Filing",
+    "Policy Breach",
+    "Training Non-Compliance",
+    "Audit Finding",
+    "Other Compliance",
+  ],
+  "Environmental Incident": [
+    "Spill",
+    "Air Emission",
+    "Waste Management",
+    "Wildlife Impact",
+    "Other Environmental",
+  ],
+  "Quality Issue": [
+    "Product Defect",
+    "Supplier Non-Conformance",
+    "Inspection Failure",
+    "Customer Return",
+    "Other Quality",
+  ],
+  "IT System Failure": [
+    "Infrastructure",
+    "Application",
+    "Network",
+    "Vendor Service",
+    "Other IT",
+  ],
+  "Process Failure": [
+    "Workflow Deviation",
+    "Control Breakdown",
+    "Documentation Gap",
+    "Human Error",
+    "Other Process",
+  ],
+  "Customer Complaint": [
+    "Service Quality",
+    "Product Quality",
+    "Billing",
+    "Support Experience",
+    "Other Customer",
+  ],
+  Other: ["General"],
+}
+
+const DEFAULT_LOCATION_HIERARCHY: IncidentMetadataResponse["locationHierarchy"] = [
+  {
+    label: "Global HQ",
+    value: "global_hq",
+    children: [
+      {
+        label: "North Campus",
+        value: "north_campus",
+        children: [
+          { label: "Building A", value: "building_a" },
+          { label: "Building B", value: "building_b" },
+        ],
+      },
+      {
+        label: "South Campus",
+        value: "south_campus",
+        children: [
+          { label: "Manufacturing", value: "manufacturing" },
+          { label: "Distribution", value: "distribution" },
+        ],
+      },
+    ],
+  },
+  {
+    label: "Regional Offices",
+    value: "regional_offices",
+    children: [
+      {
+        label: "EMEA",
+        value: "emea",
+        children: [
+          { label: "Frankfurt", value: "frankfurt" },
+          { label: "Dubai", value: "dubai" },
+        ],
+      },
+      {
+        label: "APAC",
+        value: "apac",
+        children: [
+          { label: "Singapore", value: "singapore" },
+          { label: "Sydney", value: "sydney" },
+        ],
+      },
+    ],
+  },
+]
+
+const DEFAULT_RCA_METHODS = ["5 Whys", "Fishbone", "Fault Tree", "Apollo", "Custom"]
+
+const DEFAULT_DEPARTMENTS = [
+  "Compliance",
+  "Operations",
+  "Human Resources",
+  "Finance",
+  "IT Security",
+  "Facilities",
+  "Legal",
+  "Customer Support",
+]
+
+const FALLBACK_METADATA: IncidentMetadataResponse = {
+  incidentTypes: DEFAULT_INCIDENT_TYPES,
+  incidentCategories: DEFAULT_INCIDENT_CATEGORY_MAP,
+  severityOptions: DEFAULT_SEVERITY_OPTIONS,
+  locationHierarchy: DEFAULT_LOCATION_HIERARCHY,
+  activityTypes: DEFAULT_ACTIVITY_TYPES,
+  rcaMethods: DEFAULT_RCA_METHODS,
+  departments: DEFAULT_DEPARTMENTS,
+}
+
+function cloneLocationHierarchy(
+  nodes: IncidentMetadataResponse["locationHierarchy"],
+): IncidentMetadataResponse["locationHierarchy"] {
+  return nodes.map((node) => ({
+    label: node.label,
+    value: node.value,
+    children: node.children ? cloneLocationHierarchy(node.children as typeof nodes) : undefined,
+  }))
+}
+
+function mergeWithFallbackMetadata(
+  metadata?: IncidentMetadataResponse | null,
+): IncidentMetadataResponse {
+  const source = metadata ?? FALLBACK_METADATA
+  return {
+    incidentTypes:
+      source.incidentTypes && source.incidentTypes.length
+        ? [...source.incidentTypes]
+        : [...FALLBACK_METADATA.incidentTypes],
+    incidentCategories: Object.entries({
+      ...FALLBACK_METADATA.incidentCategories,
+      ...(source.incidentCategories ?? {}),
+    }).reduce<Record<string, string[]>>((acc, [key, categories]) => {
+      acc[key] = [...categories]
+      return acc
+    }, {}),
+    severityOptions:
+      source.severityOptions && source.severityOptions.length
+        ? source.severityOptions.map((option) => ({ ...option }))
+        : FALLBACK_METADATA.severityOptions.map((option) => ({ ...option })),
+    locationHierarchy:
+      source.locationHierarchy && source.locationHierarchy.length
+        ? cloneLocationHierarchy(source.locationHierarchy)
+        : cloneLocationHierarchy(FALLBACK_METADATA.locationHierarchy),
+    activityTypes:
+      source.activityTypes && source.activityTypes.length
+        ? [...source.activityTypes]
+        : [...FALLBACK_METADATA.activityTypes],
+    rcaMethods:
+      source.rcaMethods && source.rcaMethods.length
+        ? [...source.rcaMethods]
+        : [...FALLBACK_METADATA.rcaMethods],
+    departments:
+      source.departments && source.departments.length
+        ? [...source.departments]
+        : [...FALLBACK_METADATA.departments],
+  }
+}
 
 function stripHtml(html: string): string {
   if (!html) return ""
@@ -414,7 +612,9 @@ function LocationSelector({ hierarchy, value, onChange }: LocationSelectorProps)
 export default function IncidentsPage() {
   const [activeTab, setActiveTab] = useState<"dashboard" | "report" | "investigation">("dashboard")
   const [dashboardData, setDashboardData] = useState<IncidentDashboardResponse | null>(null)
-  const [metadata, setMetadata] = useState<IncidentMetadataResponse | null>(null)
+  const [metadata, setMetadata] = useState<IncidentMetadataResponse>(() =>
+    mergeWithFallbackMetadata(FALLBACK_METADATA),
+  )
   const [incidents, setIncidents] = useState<IncidentRecord[]>([])
   const [selectedIncidentId, setSelectedIncidentId] = useState<number | null>(null)
   const [selectedIncident, setSelectedIncident] = useState<IncidentDetail | null>(null)
@@ -449,8 +649,12 @@ export default function IncidentsPage() {
   const [formState, setFormState] = useState({
     title: "",
     incidentType: "",
+    customIncidentType: "",
     incidentCategory: "",
+    customIncidentCategory: "",
     department: "",
+    departmentSelection: "",
+    customDepartment: "",
     locationPath: [] as string[],
     occurredAt: "",
     severity: "Medium" as IncidentSeverity,
@@ -477,20 +681,40 @@ export default function IncidentsPage() {
     let active = true
     async function loadInitial() {
       try {
-        const [dashboard, list, meta] = await Promise.all([
+        const [dashboardResult, listResult, metadataResult] = await Promise.allSettled([
           fetchIncidentDashboard(),
           fetchIncidentList(),
           fetchIncidentMetadata(),
         ])
         if (!active) return
-        setDashboardData(dashboard)
-        setIncidents(list.items)
-        setMetadata(meta)
-        if (list.items.length) {
-          setSelectedIncidentId(list.items[0].id)
+
+        if (dashboardResult.status === "fulfilled") {
+          setDashboardData(dashboardResult.value)
+        } else {
+          console.error("Failed to load incident dashboard", dashboardResult.reason)
+        }
+
+        if (listResult.status === "fulfilled") {
+          setIncidents(listResult.value.items)
+          if (listResult.value.items.length) {
+            setSelectedIncidentId(listResult.value.items[0].id)
+          }
+        } else {
+          console.error("Failed to load incident list", listResult.reason)
+        }
+
+        if (metadataResult.status === "fulfilled") {
+          setMetadata(mergeWithFallbackMetadata(metadataResult.value))
+        } else {
+          console.error(
+            "Failed to load incident metadata",
+            metadataResult.status === "rejected" ? metadataResult.reason : "Unknown error",
+          )
+          setMetadata(mergeWithFallbackMetadata(null))
         }
       } catch (error) {
         console.error("Failed to load incident data", error)
+        setMetadata(mergeWithFallbackMetadata(null))
       } finally {
         if (active) {
           setLoadingDashboard(false)
@@ -546,11 +770,19 @@ export default function IncidentsPage() {
     }
     const timer = setTimeout(() => {
       setAiLoading(true)
+      const incidentTypeForAi =
+        formState.incidentType === "Other"
+          ? formState.customIncidentType.trim() || "Other"
+          : formState.incidentType
+      const departmentForAi =
+        formState.departmentSelection === "__custom__"
+          ? formState.customDepartment.trim()
+          : formState.department
       requestIncidentIntakeInsights({
         title: formState.title,
-        incidentType: formState.incidentType,
+        incidentType: incidentTypeForAi,
         detailedDescription: plain,
-        department: formState.department || "",
+        department: departmentForAi || "",
         severity: formState.severity,
       })
         .then(setAiAssessment)
@@ -560,14 +792,49 @@ export default function IncidentsPage() {
     return () => {
       clearTimeout(timer)
     }
-  }, [formState.title, formState.incidentType, formState.detailedDescriptionText, formState.department, formState.severity])
+  }, [
+    formState.title,
+    formState.incidentType,
+    formState.customIncidentType,
+    formState.detailedDescriptionText,
+    formState.department,
+    formState.departmentSelection,
+    formState.customDepartment,
+    formState.severity,
+  ])
 
   const filteredCategories = useMemo(() => {
-    if (!metadata || !formState.incidentType) return []
+    if (!formState.incidentType || formState.incidentType === "Other") return []
     return metadata.incidentCategories[formState.incidentType] ?? []
   }, [metadata, formState.incidentType])
 
-  const severityOptions = metadata?.severityOptions ?? DEFAULT_SEVERITY_OPTIONS
+  const shouldUseCustomCategory = useMemo(() => {
+    if (!formState.incidentType) return false
+    if (formState.incidentType === "Other") return true
+    return filteredCategories.length === 0
+  }, [formState.incidentType, filteredCategories])
+
+  const severityOptions = metadata.severityOptions ?? DEFAULT_SEVERITY_OPTIONS
+  const departmentOptions = useMemo(() => {
+    const options = metadata.departments?.length
+      ? metadata.departments
+      : DEFAULT_DEPARTMENTS
+    return Array.from(new Set(options)).sort((a, b) => a.localeCompare(b))
+  }, [metadata])
+
+  const resolvedIncidentType = useMemo(() => {
+    if (formState.incidentType !== "Other") {
+      return formState.incidentType
+    }
+    return formState.customIncidentType.trim()
+  }, [formState.incidentType, formState.customIncidentType])
+
+  const resolvedDepartment = useMemo(() => {
+    if (formState.departmentSelection === "__custom__") {
+      return formState.customDepartment.trim()
+    }
+    return formState.department.trim()
+  }, [formState.departmentSelection, formState.customDepartment, formState.department])
   const severityDescriptions = useMemo(() => {
     const map = new Map<string, string>()
     severityOptions.forEach((option) => map.set(option.value, option.description))
@@ -595,11 +862,34 @@ export default function IncidentsPage() {
 
   const handleSubmit = async () => {
     const errors: string[] = []
+    const incidentTypeValue = resolvedIncidentType
+    const incidentCategoryValue = shouldUseCustomCategory
+      ? formState.customIncidentCategory.trim()
+      : formState.incidentCategory
+    const departmentValue = resolvedDepartment
+
     if (!formState.title.trim()) errors.push("Incident title is required.")
     if (formState.title.trim().length > 200) errors.push("Incident title must be 200 characters or fewer.")
-    if (!formState.incidentType) errors.push("Select an incident type.")
-    if (!formState.incidentCategory && filteredCategories.length) errors.push("Select an incident category.")
-    if (!formState.department.trim()) errors.push("Department is required.")
+    if (!incidentTypeValue) {
+      errors.push(
+        formState.incidentType === "Other"
+          ? "Provide a custom incident type."
+          : "Select an incident type.",
+      )
+    }
+    if (!shouldUseCustomCategory && filteredCategories.length && !formState.incidentCategory) {
+      errors.push("Select an incident category.")
+    }
+    if (shouldUseCustomCategory && formState.incidentType && !incidentCategoryValue) {
+      errors.push("Provide an incident category.")
+    }
+    if (!departmentValue) {
+      errors.push(
+        formState.departmentSelection === "__custom__"
+          ? "Specify the department name."
+          : "Department is required.",
+      )
+    }
     if (!formState.locationPath.length) errors.push("Select a location.")
     if (!formState.occurredAt) errors.push("Provide date and time of the incident.")
     if (!formState.impactAssessment.trim()) errors.push("Impact assessment is required.")
@@ -619,9 +909,9 @@ export default function IncidentsPage() {
     try {
       const payload: IncidentFormPayload = {
         title: formState.title.trim(),
-        incidentType: formState.incidentType,
-        incidentCategory: formState.incidentCategory || null,
-        department: formState.department.trim(),
+        incidentType: incidentTypeValue || "Other",
+        incidentCategory: incidentCategoryValue ? incidentCategoryValue : null,
+        department: departmentValue,
         locationPath: formState.locationPath,
         occurredAt: new Date(formState.occurredAt).toISOString(),
         severity: formState.severity,
@@ -657,8 +947,12 @@ export default function IncidentsPage() {
         ...prev,
         title: "",
         incidentType: "",
+        customIncidentType: "",
         incidentCategory: "",
+        customIncidentCategory: "",
         department: "",
+        departmentSelection: "",
+        customDepartment: "",
         locationPath: [],
         occurredAt: "",
         impactAssessment: "",
@@ -1032,49 +1326,136 @@ export default function IncidentsPage() {
                         <select
                           className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm focus:border-indigo-500 focus:outline-none"
                           value={formState.incidentType}
-                          onChange={(event) =>
+                          onChange={(event) => {
+                            const value = event.target.value
                             setFormState((prev) => ({
                               ...prev,
-                              incidentType: event.target.value,
+                              incidentType: value,
                               incidentCategory: "",
+                              customIncidentCategory: "",
+                              customIncidentType: value === "Other" ? prev.customIncidentType : "",
                             }))
-                          }
+                          }}
                         >
                           <option value="">Select type</option>
-                          {(metadata?.incidentTypes ?? []).map((type) => (
+                          {metadata.incidentTypes.map((type) => (
                             <option key={type} value={type}>
                               {type}
                             </option>
                           ))}
                         </select>
+                        {formState.incidentType === "Other" ? (
+                          <Input
+                            className="mt-2"
+                            value={formState.customIncidentType}
+                            onChange={(event) =>
+                              setFormState((prev) => ({
+                                ...prev,
+                                customIncidentType: event.target.value,
+                              }))
+                            }
+                            placeholder="Describe the incident type"
+                          />
+                        ) : null}
                       </div>
 
                       <div className="space-y-2">
                         <Label>Incident Category</Label>
-                        <select
-                          className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm focus:border-indigo-500 focus:outline-none"
-                          value={formState.incidentCategory}
-                          onChange={(event) => setFormState((prev) => ({ ...prev, incidentCategory: event.target.value }))}
-                          disabled={!filteredCategories.length}
-                        >
-                          <option value="">Select category</option>
-                          {filteredCategories.map((category) => (
-                            <option key={category} value={category}>
-                              {category}
-                            </option>
-                          ))}
-                        </select>
+                        {shouldUseCustomCategory ? (
+                          <Input
+                            value={formState.customIncidentCategory}
+                            onChange={(event) =>
+                              setFormState((prev) => ({
+                                ...prev,
+                                customIncidentCategory: event.target.value,
+                              }))
+                            }
+                            placeholder={
+                              formState.incidentType
+                                ? "Describe the incident category"
+                                : "Select an incident type first"
+                            }
+                            disabled={!formState.incidentType}
+                          />
+                        ) : (
+                          <select
+                            className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm focus:border-indigo-500 focus:outline-none"
+                            value={formState.incidentCategory}
+                            onChange={(event) =>
+                              setFormState((prev) => ({
+                                ...prev,
+                                incidentCategory: event.target.value,
+                              }))
+                            }
+                          >
+                            <option value="">Select category</option>
+                            {filteredCategories.map((category) => (
+                              <option key={category} value={category}>
+                                {category}
+                              </option>
+                            ))}
+                          </select>
+                        )}
                       </div>
                     </div>
 
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div className="space-y-2">
                         <Label className="flex items-center gap-2">Department <span className="text-red-600">*</span></Label>
-                        <Input
-                          value={formState.department}
-                          onChange={(event) => setFormState((prev) => ({ ...prev, department: event.target.value }))}
-                          placeholder="e.g. IT Security"
-                        />
+                        <Select
+                          value={
+                            formState.departmentSelection ||
+                            (formState.department
+                              ? departmentOptions.includes(formState.department)
+                                ? formState.department
+                                : "__custom__"
+                              : "")
+                          }
+                          onValueChange={(value) => {
+                            setFormState((prev) => {
+                              if (value === "__custom__") {
+                                const customValue = prev.customDepartment
+                                return {
+                                  ...prev,
+                                  departmentSelection: value,
+                                  department: customValue,
+                                }
+                              }
+                              return {
+                                ...prev,
+                                departmentSelection: value,
+                                department: value,
+                                customDepartment: "",
+                              }
+                            })
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select department" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {departmentOptions.map((departmentName) => (
+                              <SelectItem key={departmentName} value={departmentName}>
+                                {departmentName}
+                              </SelectItem>
+                            ))}
+                            <SelectItem value="__custom__">Other</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {formState.departmentSelection === "__custom__" ? (
+                          <Input
+                            className="mt-2"
+                            value={formState.customDepartment}
+                            onChange={(event) =>
+                              setFormState((prev) => ({
+                                ...prev,
+                                customDepartment: event.target.value,
+                                department: event.target.value,
+                              }))
+                            }
+                            placeholder="Enter department name"
+                          />
+                        ) : null}
                       </div>
                       <div className="space-y-2">
                         <Label className="flex items-center gap-2">Severity <span className="text-red-600">*</span></Label>
@@ -1609,7 +1990,7 @@ export default function IncidentsPage() {
                             value={activityForm.activityType}
                             onChange={(event) => setActivityForm((prev) => ({ ...prev, activityType: event.target.value }))}
                           >
-                            {(metadata?.activityTypes ?? DEFAULT_ACTIVITY_TYPES).map((type) => (
+                            {(metadata.activityTypes ?? DEFAULT_ACTIVITY_TYPES).map((type) => (
                               <option key={type} value={type}>
                                 {type}
                               </option>
@@ -1660,7 +2041,7 @@ export default function IncidentsPage() {
                           value={rcaForm.method}
                           onChange={(event) => setRcaForm((prev) => ({ ...prev, method: event.target.value }))}
                         >
-                          {(metadata?.rcaMethods ?? ["5 Whys", "Fishbone", "Fault Tree", "Apollo", "Custom"]).map((method) => (
+                          {(metadata.rcaMethods ?? DEFAULT_RCA_METHODS).map((method) => (
                             <option key={method} value={method}>
                               {method}
                             </option>
