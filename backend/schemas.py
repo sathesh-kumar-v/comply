@@ -51,10 +51,12 @@ class UserCreate(UserBase):
     """User creation schema with password and role - Extended for compliance wizard"""
     password: str
     role: UserRole = UserRole.EMPLOYEE
-    
+    permission_level: Optional[PermissionLevel] = None
+    is_active: bool = True
+
     # Professional Information
     employee_id: Optional[str] = None
-    
+
     # Compliance Role & Permissions
     areas_of_responsibility: List[str] = []
     
@@ -62,7 +64,7 @@ class UserCreate(UserBase):
     timezone: str = "UTC"
     notifications_email: bool = True
     notifications_sms: bool = False
-    
+
     @field_validator('password')
     def validate_password(cls, v):
         if len(v) < 8:
@@ -117,6 +119,17 @@ class UserUpdate(BaseModel):
     position: Optional[str] = None
     role: Optional[UserRole] = None
     is_active: Optional[bool] = None
+    permission_level: Optional[PermissionLevel] = None
+    notifications_email: Optional[bool] = None
+    notifications_sms: Optional[bool] = None
+    timezone: Optional[str] = None
+    password: Optional[str] = None
+
+    @field_validator('password')
+    def validate_update_password(cls, value: Optional[str]):
+        if value is not None and len(value) < 8:
+            raise ValueError('Password must be at least 8 characters long')
+        return value
 
 class UserResponse(UserBase):
     id: int
@@ -127,6 +140,9 @@ class UserResponse(UserBase):
     created_at: datetime
     last_login: Optional[datetime] = None
     avatar_url: Optional[str] = None
+    timezone: Optional[str] = None
+    notifications_email: bool = True
+    notifications_sms: bool = False
     
     class Config:
         from_attributes = True
