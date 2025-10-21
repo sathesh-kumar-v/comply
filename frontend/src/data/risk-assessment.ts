@@ -1,4 +1,8 @@
-import type { RiskAssessmentListItem, RiskDashboardData } from "@/types/risk"
+import type {
+  RiskAssessmentDetail,
+  RiskAssessmentListItem,
+  RiskDashboardData
+} from "@/types/risk"
 
 type MockDashboardOptions = {
   riskType?: string
@@ -159,6 +163,39 @@ const OFFLINE_ASSESSMENT_TEMPLATE: RiskAssessmentListItem[] = [
     highRiskCountries: 3,
     assignedAssessor: "Amina Hassan"
   }
+]
+
+const DEFAULT_ASSESSMENT_CATEGORIES: RiskAssessmentDetail["categories"] = [
+  { key: "political_stability", label: "Political Stability", weight: 20 },
+  { key: "economic_outlook", label: "Economic Indicators", weight: 20 },
+  { key: "regulatory_index", label: "Regulatory Environment", weight: 15 },
+  { key: "corruption_index", label: "Corruption Index", weight: 10 },
+  { key: "infrastructure", label: "Infrastructure Quality", weight: 10 },
+  { key: "currency_stability", label: "Currency Stability", weight: 10 },
+  { key: "trade_relations", label: "Trade Relations", weight: 10 },
+  { key: "security", label: "Security Environment", weight: 5 }
+]
+
+const DEFAULT_IMPACT_LEVELS: RiskAssessmentDetail["impactLevels"] = {
+  Low: "Minimal disruption managed within existing controls",
+  Medium: "Requires coordination across impacted functions",
+  High: "Executive oversight required for mitigation",
+  Critical: "Threatens strategic objectives and continuity"
+}
+
+const DEFAULT_PROBABILITY_LEVELS: RiskAssessmentDetail["probabilityLevels"] = {
+  Rare: "Unlikely to occur (<10%)",
+  Possible: "May occur occasionally (10-40%)",
+  Likely: "Expected periodically (40-70%)",
+  "Almost Certain": "Anticipated frequently (>70%)"
+}
+
+const DEFAULT_REVIEW_TEAM = ["Sophia Martinez", "Daniel Carter", "Amina Hassan"]
+
+const DEFAULT_EXTERNAL_SOURCES: RiskAssessmentDetail["externalDataSources"] = [
+  { name: "World Bank Open Data", lastUpdated: "2024-04-12" },
+  { name: "Global Compliance Monitor", lastUpdated: "2024-04-09" },
+  { name: "AI Risk Intelligence Hub", lastUpdated: "2024-04-10" }
 ]
 
 function buildCountryCategories(multiplier: number) {
@@ -347,3 +384,44 @@ export function getOfflineAssessments(): RiskAssessmentListItem[] {
 }
 
 export const MOCK_RISK_ASSESSMENTS = getOfflineAssessments()
+
+export function getOfflineAssessmentDetail(assessmentId: number | string): RiskAssessmentDetail {
+  const numericId = Number(assessmentId)
+  const baseAssessment =
+    OFFLINE_ASSESSMENT_TEMPLATE.find((assessment) => assessment.id === numericId) ??
+    OFFLINE_ASSESSMENT_TEMPLATE[0]
+
+  const dashboard = createMockDashboard()
+
+  return {
+    id: baseAssessment.id,
+    title: baseAssessment.title,
+    assessmentType: baseAssessment.assessmentType,
+    framework: "ISO 31000 Risk Management",
+    scoringScale: "1-100",
+    updateFrequency: "Quarterly",
+    dataSource: "Combined",
+    startDate: baseAssessment.startDate,
+    endDate: baseAssessment.endDate,
+    assignedAssessor: baseAssessment.assignedAssessor,
+    reviewTeam: [...DEFAULT_REVIEW_TEAM],
+    status: baseAssessment.status,
+    categories: DEFAULT_ASSESSMENT_CATEGORIES.map((category) => ({ ...category })),
+    impactLevels: { ...DEFAULT_IMPACT_LEVELS },
+    probabilityLevels: { ...DEFAULT_PROBABILITY_LEVELS },
+    aiRecommendations: {
+      summary: "Offline generated insights based on historical exposure patterns and AI heuristics.",
+      focusAreas: dashboard.aiInsights.trendHighlights.map((highlight) => ({
+        country: highlight.country,
+        recommendation: highlight.alerts[0] ?? "Continue monitoring regional indicators"
+      }))
+    },
+    nextAssessmentDue: baseAssessment.nextAssessmentDue,
+    externalDataSources: DEFAULT_EXTERNAL_SOURCES.map((source) => ({ ...source })),
+    countries: dashboard.countryDetails.map((country) => ({
+      ...country,
+      categories: country.categories.map((category) => ({ ...category })),
+      attachments: (country.attachments ?? []).map((attachment) => ({ ...attachment }))
+    }))
+  }
+}
