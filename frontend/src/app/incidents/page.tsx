@@ -317,43 +317,49 @@ function cloneLocationHierarchy(
 }
 
 function mergeWithFallbackMetadata(
-  metadata?: IncidentMetadataResponse | null,
+  metadata?: IncidentMetadataResponse | null
 ): IncidentMetadataResponse {
-  const source = metadata ?? FALLBACK_METADATA
+  const source = metadata ?? FALLBACK_METADATA;
+
+  // Small helpers to keep things neat
+  const arr = <T,>(v?: T[] | null): T[] => (Array.isArray(v) ? v : []);
+  const pick = <T,>(primary?: T[] | null, fallback?: T[] | null): T[] =>
+    (primary && primary.length ? primary : fallback) ?? [];
+
+  const pickedIncidentTypes = pick(source.incidentTypes, FALLBACK_METADATA.incidentTypes);
+  const pickedSeverity = pick(source.severityOptions, FALLBACK_METADATA.severityOptions);
+  const pickedLocHierarchy = pick(
+    source.locationHierarchy,
+    FALLBACK_METADATA.locationHierarchy
+  );
+  const pickedActivityTypes = pick(source.activityTypes, FALLBACK_METADATA.activityTypes);
+  const pickedRcaMethods = pick(source.rcaMethods, FALLBACK_METADATA.rcaMethods);
+  const pickedDepartments = pick(source.departments, FALLBACK_METADATA.departments);
+
   return {
-    incidentTypes:
-      source.incidentTypes && source.incidentTypes.length
-        ? [...source.incidentTypes]
-        : [...FALLBACK_METADATA.incidentTypes],
+    incidentTypes: [...pickedIncidentTypes],
+
+    // Merge categories from fallback + source, ensure each value is an array
     incidentCategories: Object.entries({
-      ...FALLBACK_METADATA.incidentCategories,
+      ...(FALLBACK_METADATA.incidentCategories ?? {}),
       ...(source.incidentCategories ?? {}),
     }).reduce<Record<string, string[]>>((acc, [key, categories]) => {
-      acc[key] = [...categories]
-      return acc
+      acc[key] = arr(categories);
+      return acc;
     }, {}),
-    severityOptions:
-      source.severityOptions && source.severityOptions.length
-        ? source.severityOptions.map((option) => ({ ...option }))
-        : FALLBACK_METADATA.severityOptions.map((option) => ({ ...option })),
-    locationHierarchy:
-      source.locationHierarchy && source.locationHierarchy.length
-        ? cloneLocationHierarchy(source.locationHierarchy)
-        : cloneLocationHierarchy(FALLBACK_METADATA.locationHierarchy),
-    activityTypes:
-      source.activityTypes && source.activityTypes.length
-        ? [...source.activityTypes]
-        : [...FALLBACK_METADATA.activityTypes],
-    rcaMethods:
-      source.rcaMethods && source.rcaMethods.length
-        ? [...source.rcaMethods]
-        : [...FALLBACK_METADATA.rcaMethods],
-    departments:
-      source.departments && source.departments.length
-        ? [...source.departments]
-        : [...FALLBACK_METADATA.departments],
-  }
+
+    severityOptions: pickedSeverity.map((option) => ({ ...option })),
+
+    locationHierarchy: cloneLocationHierarchy(pickedLocHierarchy),
+
+    activityTypes: [...pickedActivityTypes],
+
+    rcaMethods: [...pickedRcaMethods],
+
+    departments: [...pickedDepartments],
+  };
 }
+
 
 function stripHtml(html: string): string {
   if (!html) return ""
