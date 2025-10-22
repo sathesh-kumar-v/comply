@@ -213,9 +213,9 @@ DEFAULT_ALLOWED_ORIGINS: Set[str] = {
     "http://127.0.0.1:5173",
     # Production frontend currently deployed on Render
     "https://comply-x-tyle.onrender.com",
-    "comply-one.vercel.app",
-    "comply-git-main-satheshkumars-projects-4dc0dbec.vercel.app",
-    "comply-qgnzm8qcx-satheshkumars-projects-4dc0dbec.vercel.app",
+    "https://comply-one.vercel.app",
+    "https://comply-git-main-satheshkumars-projects-4dc0dbec.vercel.app",
+    "https://comply-qgnzm8qcx-satheshkumars-projects-4dc0dbec.vercel.app",
     # Allow same-origin calls when the frontend is served from the API host
     "https://comply-x.onrender.com",
     "https://comply-9dpi.onrender.com",
