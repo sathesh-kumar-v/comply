@@ -47,7 +47,7 @@ interface CountryFormState {
   evidence: string
   comments: string
   updateSource: string
-  categories: Array<{ id: number; name: string; score: number; trend?: string | null }>
+  categories: Array<{ id: number; name: string; score: number; trend?: string | null; aiSuggestion?: number | null; }>
   attachments: AttachmentPreview[]
 }
 
