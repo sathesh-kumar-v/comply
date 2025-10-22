@@ -58,6 +58,16 @@ else:
     DB_PATH = os.path.join(BASE_DIR, "comply_x.db")
     DATABASE_URL = f"sqlite:///{DB_PATH}"
 
+# SQLAlchemy defaults to the psycopg2 driver for ``postgresql://`` URLs, but the
+# project depends on ``psycopg`` (the psycopg3 driver).  Render was failing to
+# import ``psycopg2`` during startup, so we explicitly switch the URL scheme to
+# ``postgresql+psycopg://`` when needed to ensure SQLAlchemy loads the correct
+# driver.
+if DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
+elif DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg://", 1)
+
 engine_kwargs = {}
 if DATABASE_URL.startswith("sqlite"):
     engine_kwargs["connect_args"] = {"check_same_thread": False}
