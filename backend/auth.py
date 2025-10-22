@@ -11,7 +11,7 @@ import pyotp
 import qrcode
 import io
 import base64
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 from database import get_db
 from models import User, UserRole, PasswordResetToken, MFAMethod, PermissionLevel
@@ -37,11 +37,63 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer()
 
+# Configuration helpers -----------------------------------------------------
 router = APIRouter()
 
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
-GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI")
+
+
+def _derive_default_redirect_uri() -> Optional[str]:
+    """Infer a Google redirect URI when it is not explicitly configured.
+
+    The local development workflow commonly relies on the Next.js proxy which
+    means developers rarely set ``GOOGLE_REDIRECT_URI``.  Previously this caused
+    the OAuth flow to abort with a server error because the backend considered
+    the configuration incomplete.  By deriving a sensible default we preserve
+    the strict validation for production (where an explicit value should be
+    provided) while keeping the developer experience smooth.
+    """
+
+    explicit_redirect = os.getenv("GOOGLE_REDIRECT_URI")
+    if explicit_redirect:
+        return explicit_redirect.rstrip("/")
+
+    backend_base = os.getenv("BACKEND_BASE_URL")
+    if backend_base:
+        backend_base = backend_base.strip().rstrip("/")
+        if backend_base:
+            if not backend_base.startswith("http"):
+                backend_base = f"http://{backend_base.lstrip('/')}"
+
+            parsed = urlparse(backend_base)
+            path = (parsed.path or "").rstrip("/")
+            if path.startswith("/api"):
+                return f"{backend_base}/auth/oauth/google/callback"
+
+            return f"{backend_base}/api/auth/oauth/google/callback"
+
+    api_base = os.getenv("API_BASE_URL") or os.getenv("SERVICE_BASE_URL")
+    if api_base:
+        api_base = api_base.strip().rstrip("/")
+        if api_base.startswith("http"):
+            parsed = urlparse(api_base)
+            path = (parsed.path or "").rstrip("/")
+            if path.startswith("/api"):
+                return f"{api_base}/auth/oauth/google/callback"
+
+            return f"{api_base}/api/auth/oauth/google/callback"
+
+    frontend_base = os.getenv("FRONTEND_BASE_URL", "http://localhost:3000")
+    if any(token in frontend_base for token in {"localhost", "127.0.0.1"}):
+        # Fall back to the conventional local FastAPI port when running locally.
+        return "http://localhost:8000/api/auth/oauth/google/callback"
+
+    # Unable to infer a safe default.
+    return None
+
+
+GOOGLE_REDIRECT_URI = _derive_default_redirect_uri()
 FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "http://localhost:3000")
 GOOGLE_OAUTH_SUCCESS_PATH = os.getenv("GOOGLE_OAUTH_SUCCESS_PATH", "/auth/oauth/google/callback")
 GOOGLE_OAUTH_SCOPES = os.getenv("GOOGLE_OAUTH_SCOPES", "openid email profile")
