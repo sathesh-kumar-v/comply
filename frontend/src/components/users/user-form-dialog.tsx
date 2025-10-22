@@ -27,7 +27,10 @@ const PERMISSION_VALUES = USER_PERMISSION_OPTIONS.map((option) => option.value) 
   ...User["permission_level"][],
 ]
 
-/** Single, stable form schema (password optional in the base type) */
+/** Single, stable form schema (password optional in the base type)
+ * NOTE: booleans are REQUIRED here (no .default()) to avoid boolean|undefined
+ * in the resolver’s input type. We still set defaults via defaultValues/reset().
+ */
 const baseSchema = z.object({
   first_name: z.string().min(1, "First name is required").max(50, "Max length is 50 characters"),
   last_name: z.string().min(1, "Last name is required").max(50, "Max length is 50 characters"),
@@ -38,10 +41,9 @@ const baseSchema = z.object({
   role: z.enum(ROLE_VALUES),
   permission_level: z.enum(PERMISSION_VALUES),
   timezone: z.string().min(1, "Timezone is required"),
-  // defaults ensure parsed output is boolean (never undefined)
-  notifications_email: z.boolean().default(true),
-  notifications_sms: z.boolean().default(false),
-  is_active: z.boolean().default(true),
+  notifications_email: z.boolean(), // <-- required
+  notifications_sms: z.boolean(),   // <-- required
+  is_active: z.boolean(),           // <-- required
   password: z.string().optional(),
 })
 
@@ -93,9 +95,9 @@ export function UserFormDialog({
       role: "employee",
       permission_level: ROLE_PERMISSION_DEFAULT.employee,
       timezone: "UTC",
-      notifications_email: true,
-      notifications_sms: false,
-      is_active: true,
+      notifications_email: true, // explicit defaults here
+      notifications_sms: false,  // explicit defaults here
+      is_active: true,           // explicit defaults here
       password: "",
     },
   })
