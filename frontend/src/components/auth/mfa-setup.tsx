@@ -8,18 +8,18 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { 
-  Shield, 
-  ShieldCheck, 
-  ShieldX, 
-  Eye, 
-  EyeOff, 
-  CheckCircle, 
-  AlertCircle, 
-  Smartphone, 
-  Copy, 
+import {
+  Shield,
+  ShieldCheck,
+  ShieldX,
+  Eye,
+  EyeOff,
+  CheckCircle,
+  AlertCircle,
+  Smartphone,
+  Copy,
   Download,
-  QrCode
+  QrCode,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { useSettings } from '@/contexts/settings-context';
@@ -27,6 +27,8 @@ import axios from 'axios';
 import type { AxiosResponse } from 'axios';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://comply-x.onrender.com';
+
+type ApiMode = 'modern' | 'legacy';
 
 interface MFASetupData {
   methodId?: number;
@@ -40,57 +42,62 @@ interface MFAStatus {
   methods: string[];
 }
 
-export function MFASetup() {
+/** ————————————————————————————————————————————————————————————————
+ * Helpers (non-exported) — keep these as plain functions/consts so
+ * TypeScript never confuses them with a React component.
+ * ———————————————————————————————————————————————————————————————— */
+const ensureDataUrl = (value: string): string =>
+  value.startsWith('data:') ? value : `data:image/png;base64,${value}`;
+
+/**
+ * “withApiMode” lives inside the component so it can read state,
+ * but it returns a *Promise* — it does not affect the component’s
+ * JSX return type.
+ */
+export function MFASetup(): JSX.Element {
   const [mfaStatus, setMfaStatus] = useState<MFAStatus>({ enabled: false, methods: [] });
   const [setupData, setSetupData] = useState<MFASetupData | null>(null);
   const [isSetupOpen, setIsSetupOpen] = useState(false);
   const [currentStep, setCurrentStep] = useState<'password' | 'scan' | 'verify' | 'backup'>('password');
-  const [formData, setFormData] = useState({
-    password: '',
-    verificationCode: ''
-  });
+  const [formData, setFormData] = useState({ password: '', verificationCode: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [showBackupCodes, setShowBackupCodes] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [apiMode, setApiMode] = useState<'modern' | 'legacy'>('modern');
-  const { user } = useAuth();
-  const { security } = useSettings();
+  const [apiMode, setApiMode] = useState<ApiMode>('modern');
 
+  const { user } = useAuth(); // kept for future use if needed
+  const { security } = useSettings();
   const canManageMfa = security.allowMfaEnrollment || mfaStatus.enabled;
 
   useEffect(() => {
-    fetchMFAStatus();
+    void fetchMFAStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const withApiMode = async <T>(
+  const withApiMode = async <T,>(
     modernCall: () => Promise<T>,
     legacyCall: () => Promise<T>
-  ): Promise<{ result: T; mode: 'modern' | 'legacy' }> => {
+  ): Promise<{ result: T; mode: ApiMode }> => {
     if (apiMode === 'legacy') {
-      return { result: await legacyCall(), mode: 'legacy' };
+      const legacy = await legacyCall();
+      return { result: legacy, mode: 'legacy' };
     }
-
     try {
-      const result = await modernCall();
-      if (apiMode !== 'modern') {
-        setApiMode('modern');
-      }
-      return { result, mode: 'modern' };
-    } catch (error: any) {
-      if (error.response?.status === 404) {
-        const legacyResult = await legacyCall();
+      const modern = await modernCall();
+      if (apiMode !== 'modern') setApiMode('modern');
+      return { result: modern, mode: 'modern' };
+    } catch (err: any) {
+      if (err?.response?.status === 404) {
+        const legacy = await legacyCall();
         setApiMode('legacy');
-        return { result: legacyResult, mode: 'legacy' };
+        return { result: legacy, mode: 'legacy' };
       }
-      throw error;
+      throw err;
     }
   };
 
-  const ensureDataUrl = (value: string) =>
-    value.startsWith('data:') ? value : `data:image/png;base64,${value}`;
-
-  const fetchMFAStatus = async () => {
+  const fetchMFAStatus = async (): Promise<void> => {
     try {
       const token = localStorage.getItem('auth_token');
       if (!token) return;
@@ -100,30 +107,32 @@ export function MFASetup() {
       >(
         () =>
           axios.get(`${API_BASE_URL}/api/mfa/status`, {
-            headers: { Authorization: `Bearer ${token}` }
+            headers: { Authorization: `Bearer ${token}` },
           }),
         () =>
           axios.get(`${API_BASE_URL}/api/auth/mfa/status`, {
-            headers: { Authorization: `Bearer ${token}` }
+            headers: { Authorization: `Bearer ${token}` },
           })
       );
 
       const data = response.data;
       setMfaStatus({
         enabled: Boolean(data.enabled ?? data.mfa_enabled),
-        methods: Array.isArray(data.methods) ? data.methods : []
+        methods: Array.isArray(data.methods) ? data.methods : [],
       });
-    } catch (error) {
-      console.error('Failed to fetch MFA status:', error);
+    } catch (err) {
+      console.error('Failed to fetch MFA status:', err);
     }
   };
 
-  const handleStartSetup = async () => {
+  const handleStartSetup = async (): Promise<void> => {
     setIsLoading(true);
     setError('');
 
     try {
       const token = localStorage.getItem('auth_token');
+      if (!token) throw new Error('Not authenticated');
+
       const { result: response, mode } = await withApiMode<
         | AxiosResponse<{
             method_id: number;
@@ -163,7 +172,7 @@ export function MFASetup() {
           methodId: data.method_id,
           secret: data.secret_key,
           qrCode: ensureDataUrl(data.qr_code_base64),
-          backupCodes: data.backup_codes || []
+          backupCodes: data.backup_codes || [],
         });
       } else {
         const data = (response as AxiosResponse<{
@@ -175,18 +184,19 @@ export function MFASetup() {
         setSetupData({
           secret: data.secret,
           qrCode: ensureDataUrl(data.qr_code),
-          backupCodes: data.backup_codes || []
+          backupCodes: data.backup_codes || [],
         });
       }
+
       setCurrentStep('scan');
-    } catch (error: any) {
-      setError(error.response?.data?.detail || 'Failed to setup MFA');
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || 'Failed to setup MFA');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleVerifySetup = async () => {
+  const handleVerifySetup = async (): Promise<void> => {
     if (!setupData) return;
 
     setIsLoading(true);
@@ -194,13 +204,15 @@ export function MFASetup() {
 
     try {
       const token = localStorage.getItem('auth_token');
+      if (!token) throw new Error('Not authenticated');
+
       await withApiMode(
         () =>
           axios.post(
             `${API_BASE_URL}/api/mfa/totp/verify`,
             {
               method_id: setupData.methodId,
-              verification_code: formData.verificationCode
+              verification_code: formData.verificationCode,
             },
             { headers: { Authorization: `Bearer ${token}` } }
           ),
@@ -210,7 +222,7 @@ export function MFASetup() {
             {
               secret: setupData.secret,
               verification_code: formData.verificationCode,
-              backup_codes: setupData.backupCodes
+              backup_codes: setupData.backupCodes,
             },
             { headers: { Authorization: `Bearer ${token}` } }
           )
@@ -218,19 +230,21 @@ export function MFASetup() {
 
       setCurrentStep('backup');
       await fetchMFAStatus();
-    } catch (error: any) {
-      setError(error.response?.data?.detail || 'Invalid verification code');
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || 'Invalid verification code');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleDisableMFA = async () => {
+  const handleDisableMFA = async (): Promise<void> => {
     setIsLoading(true);
     setError('');
 
     try {
       const token = localStorage.getItem('auth_token');
+      if (!token) throw new Error('Not authenticated');
+
       await withApiMode(
         () =>
           axios.post(
@@ -249,14 +263,14 @@ export function MFASetup() {
       await fetchMFAStatus();
       setIsSetupOpen(false);
       resetForm();
-    } catch (error: any) {
-      setError(error.response?.data?.detail || 'Failed to disable MFA');
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || 'Failed to disable MFA');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const resetForm = () => {
+  const resetForm = (): void => {
     setFormData({ password: '', verificationCode: '' });
     setSetupData(null);
     setCurrentStep('password');
@@ -264,13 +278,12 @@ export function MFASetup() {
     setShowPassword(false);
   };
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
+  const copyToClipboard = (text: string): void => {
+    void navigator.clipboard.writeText(text);
   };
 
-  const downloadBackupCodes = () => {
+  const downloadBackupCodes = (): void => {
     if (!setupData) return;
-
     const content = setupData.backupCodes.join('\n');
     const blob = new Blob([content], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
@@ -281,18 +294,16 @@ export function MFASetup() {
     URL.revokeObjectURL(url);
   };
 
+  // ——————— Render subviews ———————
   const renderPasswordStep = () => (
     <div className="space-y-6">
       <div className="text-center">
-        <Shield className="mx-auto h-12 w-12 text-blue-500 mb-4" />
+        <Shield className="mx-auto mb-4 h-12 w-12 text-blue-500" />
         <h3 className="text-lg font-semibold">
           {mfaStatus.enabled ? 'Disable Multi-Factor Authentication' : 'Enable Multi-Factor Authentication'}
         </h3>
-        <p className="text-sm text-gray-600 mt-2">
-          {mfaStatus.enabled 
-            ? 'Enter your password to disable MFA'
-            : 'Enter your password to start setting up MFA'
-          }
+        <p className="mt-2 text-sm text-gray-600">
+          {mfaStatus.enabled ? 'Enter your password to disable MFA' : 'Enter your password to start setting up MFA'}
         </p>
       </div>
 
@@ -320,7 +331,7 @@ export function MFASetup() {
               variant="ghost"
               size="sm"
               className="absolute right-0 top-0 h-full px-3"
-              onClick={() => setShowPassword(!showPassword)}
+              onClick={() => setShowPassword((v) => !v)}
             >
               {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </Button>
@@ -328,22 +339,16 @@ export function MFASetup() {
         </div>
 
         <div className="flex space-x-3">
-          <Button
-            variant="outline"
-            onClick={() => setIsSetupOpen(false)}
-            className="flex-1"
-          >
+          <Button variant="outline" onClick={() => setIsSetupOpen(false)} className="flex-1">
             Cancel
           </Button>
           <Button
             onClick={mfaStatus.enabled ? handleDisableMFA : handleStartSetup}
             disabled={!formData.password || isLoading || (!security.allowMfaEnrollment && !mfaStatus.enabled)}
             className="flex-1"
-            variant={mfaStatus.enabled ? "destructive" : "default"}
+            variant={mfaStatus.enabled ? 'destructive' : 'default'}
           >
-            {isLoading ? (
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
-            ) : null}
+            {isLoading ? <div className="mr-2 h-4 w-4 animate-spin rounded-full border-b-2 border-white" /> : null}
             {mfaStatus.enabled ? 'Disable MFA' : 'Continue'}
           </Button>
         </div>
@@ -354,33 +359,22 @@ export function MFASetup() {
   const renderScanStep = () => (
     <div className="space-y-6">
       <div className="text-center">
-        <QrCode className="mx-auto h-12 w-12 text-blue-500 mb-4" />
+        <QrCode className="mx-auto mb-4 h-12 w-12 text-blue-500" />
         <h3 className="text-lg font-semibold">Scan QR Code</h3>
-        <p className="text-sm text-gray-600 mt-2">
-          Use your authenticator app to scan this QR code
-        </p>
+        <p className="mt-2 text-sm text-gray-600">Use your authenticator app to scan this QR code</p>
       </div>
 
       {setupData && (
         <div className="space-y-4">
           <div className="flex justify-center">
-            <img
-              src={setupData.qrCode}
-              alt="MFA QR Code"
-              className="w-48 h-48 border rounded-lg"
-            />
+            <img src={setupData.qrCode} alt="MFA QR Code" className="h-48 w-48 rounded-lg border" />
           </div>
 
           <div className="text-center">
-            <p className="text-sm text-gray-600 mb-2">Can't scan the code? Enter manually:</p>
-            <div className="bg-gray-100 p-3 rounded text-sm font-mono break-all">
+            <p className="mb-2 text-sm text-gray-600">Can't scan the code? Enter manually:</p>
+            <div className="rounded bg-gray-100 p-3 font-mono text-sm break-all">
               {setupData.secret}
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => copyToClipboard(setupData.secret)}
-                className="ml-2 h-6"
-              >
+              <Button size="sm" variant="ghost" onClick={() => copyToClipboard(setupData.secret)} className="ml-2 h-6">
                 <Copy className="h-3 w-3" />
               </Button>
             </div>
@@ -389,26 +383,19 @@ export function MFASetup() {
           <Alert>
             <Smartphone className="h-4 w-4" />
             <AlertDescription>
-              <strong>Recommended apps:</strong><br />
-              • Google Authenticator<br />
-              • Microsoft Authenticator<br />
-              • Authy<br />
-              • 1Password
+              <strong>Recommended apps:</strong>
+              <br />• Google Authenticator
+              <br />• Microsoft Authenticator
+              <br />• Authy
+              <br />• 1Password
             </AlertDescription>
           </Alert>
 
           <div className="flex space-x-3">
-            <Button
-              variant="outline"
-              onClick={() => setCurrentStep('password')}
-              className="flex-1"
-            >
+            <Button variant="outline" onClick={() => setCurrentStep('password')} className="flex-1">
               Back
             </Button>
-            <Button
-              onClick={() => setCurrentStep('verify')}
-              className="flex-1"
-            >
+            <Button onClick={() => setCurrentStep('verify')} className="flex-1">
               Continue
             </Button>
           </div>
@@ -420,11 +407,9 @@ export function MFASetup() {
   const renderVerifyStep = () => (
     <div className="space-y-6">
       <div className="text-center">
-        <ShieldCheck className="mx-auto h-12 w-12 text-blue-500 mb-4" />
+        <ShieldCheck className="mx-auto mb-4 h-12 w-12 text-blue-500" />
         <h3 className="text-lg font-semibold">Verify Setup</h3>
-        <p className="text-sm text-gray-600 mt-2">
-          Enter the 6-digit code from your authenticator app
-        </p>
+        <p className="mt-2 text-sm text-gray-600">Enter the 6-digit code from your authenticator app</p>
       </div>
 
       {error && (
@@ -440,7 +425,12 @@ export function MFASetup() {
           <Input
             id="verificationCode"
             value={formData.verificationCode}
-            onChange={(e) => setFormData({ ...formData, verificationCode: e.target.value.replace(/\D/g, '').slice(0, 6) })}
+            onChange={(e) =>
+              setFormData({
+                ...formData,
+                verificationCode: e.target.value.replace(/\D/g, '').slice(0, 6),
+              })
+            }
             placeholder="000000"
             className="text-center text-lg tracking-widest"
             maxLength={6}
@@ -448,21 +438,11 @@ export function MFASetup() {
         </div>
 
         <div className="flex space-x-3">
-          <Button
-            variant="outline"
-            onClick={() => setCurrentStep('scan')}
-            className="flex-1"
-          >
+          <Button variant="outline" onClick={() => setCurrentStep('scan')} className="flex-1">
             Back
           </Button>
-          <Button
-            onClick={handleVerifySetup}
-            disabled={formData.verificationCode.length !== 6 || isLoading}
-            className="flex-1"
-          >
-            {isLoading ? (
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
-            ) : null}
+          <Button onClick={handleVerifySetup} disabled={formData.verificationCode.length !== 6 || isLoading} className="flex-1">
+            {isLoading ? <div className="mr-2 h-4 w-4 animate-spin rounded-full border-b-2 border-white" /> : null}
             Verify & Enable
           </Button>
         </div>
@@ -473,11 +453,9 @@ export function MFASetup() {
   const renderBackupStep = () => (
     <div className="space-y-6">
       <div className="text-center">
-        <CheckCircle className="mx-auto h-12 w-12 text-green-500 mb-4" />
+        <CheckCircle className="mx-auto mb-4 h-12 w-12 text-green-500" />
         <h3 className="text-lg font-semibold">MFA Enabled Successfully!</h3>
-        <p className="text-sm text-gray-600 mt-2">
-          Save these backup codes in a safe place
-        </p>
+        <p className="mt-2 text-sm text-gray-600">Save these backup codes in a safe place</p>
       </div>
 
       {setupData && (
@@ -485,43 +463,31 @@ export function MFASetup() {
           <Alert>
             <Shield className="h-4 w-4" />
             <AlertDescription>
-              <strong>Important:</strong> Save these backup codes safely. You can use them to access your account if you lose your authenticator device.
+              <strong>Important:</strong> Save these backup codes safely. You can use them to access your account if you lose
+              your authenticator device.
             </AlertDescription>
           </Alert>
 
           <div>
-            <div className="flex justify-between items-center mb-2">
+            <div className="mb-2 flex items-center justify-between">
               <Label>Backup Codes</Label>
               <div className="space-x-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setShowBackupCodes(!showBackupCodes)}
-                >
+                <Button size="sm" variant="outline" onClick={() => setShowBackupCodes((v) => !v)}>
                   {showBackupCodes ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={downloadBackupCodes}
-                >
+                <Button size="sm" variant="outline" onClick={downloadBackupCodes}>
                   <Download className="h-4 w-4" />
                 </Button>
               </div>
             </div>
-            
-            <div className="bg-gray-100 p-4 rounded text-sm font-mono">
+
+            <div className="rounded bg-gray-100 p-4 font-mono text-sm">
               {showBackupCodes ? (
                 <div className="grid grid-cols-2 gap-2">
                   {setupData.backupCodes.map((code, index) => (
                     <div key={index} className="flex justify-between">
                       <span>{code}</span>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => copyToClipboard(code)}
-                        className="h-4 p-0"
-                      >
+                      <Button size="sm" variant="ghost" onClick={() => copyToClipboard(code)} className="h-4 p-0">
                         <Copy className="h-3 w-3" />
                       </Button>
                     </div>
@@ -547,30 +513,26 @@ export function MFASetup() {
     </div>
   );
 
+  // ——————— Top-level component return (always JSX) ———————
   return (
     <Card className="p-6">
-      <div className="flex items-center justify-between mb-6">
+      <div className="mb-6 flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-semibold flex items-center">
-            <Shield className="h-5 w-5 mr-2" />
+          <h3 className="flex items-center text-lg font-semibold">
+            <Shield className="mr-2 h-5 w-5" />
             Multi-Factor Authentication
           </h3>
-          <p className="text-sm text-gray-600 mt-1">
-            Add an extra layer of security to your account
-          </p>
+          <p className="mt-1 text-sm text-gray-600">Add an extra layer of security to your account</p>
         </div>
-        <Badge 
-          variant={mfaStatus.enabled ? "default" : "secondary"}
-          className={mfaStatus.enabled ? "bg-green-100 text-green-800" : ""}
-        >
+        <Badge variant={mfaStatus.enabled ? 'default' : 'secondary'} className={mfaStatus.enabled ? 'bg-green-100 text-green-800' : ''}>
           {mfaStatus.enabled ? (
             <>
-              <ShieldCheck className="h-4 w-4 mr-1" />
+              <ShieldCheck className="mr-1 h-4 w-4" />
               Enabled
             </>
           ) : (
             <>
-              <ShieldX className="h-4 w-4 mr-1" />
+              <ShieldX className="mr-1 h-4 w-4" />
               Disabled
             </>
           )}
@@ -582,7 +544,7 @@ export function MFASetup() {
           {mfaStatus.enabled ? (
             <div className="space-y-2">
               <p className="flex items-center text-green-600">
-                <CheckCircle className="h-4 w-4 mr-2" />
+                <CheckCircle className="mr-2 h-4 w-4" />
                 Your account is protected with multi-factor authentication
               </p>
               <p>Methods enabled: {mfaStatus.methods.join(', ')}</p>
@@ -608,7 +570,7 @@ export function MFASetup() {
         <Dialog open={isSetupOpen} onOpenChange={setIsSetupOpen}>
           <DialogTrigger asChild>
             <Button
-              variant={mfaStatus.enabled ? "destructive" : "default"}
+              variant={mfaStatus.enabled ? 'destructive' : 'default'}
               disabled={!canManageMfa}
               onClick={() => {
                 setIsSetupOpen(true);
