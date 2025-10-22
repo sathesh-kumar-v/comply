@@ -86,21 +86,28 @@ function sanitizeChecklistSections(sections: ChecklistSection[]): ChecklistSecti
     ...section,
     required: Boolean(section.required),
     questions: (section.questions ?? []).map((question) => {
-      const evidenceValue = question.evidence_required
-      const normalizedEvidence = typeof evidenceValue === "boolean" ? evidenceValue : Boolean(evidenceValue)
+      const evidenceValue = question.evidence_required;
+
+      const normalizedEvidence =
+        typeof evidenceValue === "boolean" ? evidenceValue : Boolean(evidenceValue);
+
+      // ✅ Only a string when it actually is one, else empty string
+      const evText = typeof evidenceValue === "string" ? evidenceValue : "";
+
       const normalizedGuidance =
-        typeof evidenceValue === "string" && evidenceValue.trim().length > 0 && !question.guidance_notes
-          ? evidenceValue.trim()
-          : question.guidance_notes
+        evText.trim().length > 0 && !question.guidance_notes
+          ? evText.trim()
+          : (question.guidance_notes ?? "");
 
       return {
         ...question,
         evidence_required: normalizedEvidence,
         guidance_notes: normalizedGuidance,
-      }
+      };
     }),
-  }))
+  }));
 }
+
 
 const meetingRooms = [
   "Virtual - Teams",
