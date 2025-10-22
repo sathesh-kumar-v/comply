@@ -701,6 +701,10 @@ export default function CorrectiveActionsPage() {
   }, [dashboardData])
 
   const aiInsights: CorrectiveActionAIInsights | null = dashboardData?.aiInsights ?? null
+  const effectivenessInsights = (aiInsights?.effectivenessScores ?? []).slice(0, 3)
+  const priorityInsights = (aiInsights?.priorityRanking ?? []).slice(0, 3)
+  const resourceInsights = (aiInsights?.resourceRecommendations ?? []).slice(0, 2)
+  const escalationInsights = (aiInsights?.escalationPaths ?? []).slice(0, 2)
 
   const renderActionTable = (
     title: string,
@@ -915,59 +919,75 @@ export default function CorrectiveActionsPage() {
                     <div className="space-y-3">
                       <h4 className="text-sm font-semibold text-gray-900">Top effectiveness scores</h4>
                       <ul className="space-y-2 text-sm text-gray-600">
-                        {aiInsights?.effectivenessScores.slice(0, 3).map((item) => (
-                          <li key={item.actionId} className="flex items-center justify-between gap-4 rounded-md bg-emerald-50/60 px-3 py-2">
-                            <span className="font-medium text-gray-900">{item.title}</span>
-                            <span className="text-primary">{item.score.toFixed(1)}%</span>
-                          </li>
-                        )) || <li className="text-xs text-muted-foreground">No AI insights available.</li>}
+                        {effectivenessInsights.length > 0 ? (
+                          effectivenessInsights.map((item) => (
+                            <li key={item.actionId} className="flex items-center justify-between gap-4 rounded-md bg-emerald-50/60 px-3 py-2">
+                              <span className="font-medium text-gray-900">{item.title}</span>
+                              <span className="text-primary">{item.score.toFixed(1)}%</span>
+                            </li>
+                          ))
+                        ) : (
+                          <li className="text-xs text-muted-foreground">No AI insights available.</li>
+                        )}
                       </ul>
                     </div>
                     <div className="space-y-3">
                       <h4 className="text-sm font-semibold text-gray-900">Immediate focus actions</h4>
                       <ul className="space-y-2 text-sm text-gray-600">
-                        {aiInsights?.priorityRanking.slice(0, 3).map((item) => (
-                          <li key={item.actionId} className="rounded-md border border-emerald-100 px-3 py-2">
-                            <div className="flex items-center justify-between">
-                              <span className="font-medium text-gray-900">{item.title}</span>
-                              <Badge className={PRIORITY_BADGE_CLASS[item.suggestedPriority]}>AI {item.suggestedPriority}</Badge>
-                            </div>
-                            <p className="text-xs text-gray-500">Priority score {item.priorityScore.toFixed(1)} · Overdue days {item.overdueDays}</p>
-                          </li>
-                        )) || <li className="text-xs text-muted-foreground">No priority recommendations available.</li>}
+                        {priorityInsights.length > 0 ? (
+                          priorityInsights.map((item) => (
+                            <li key={item.actionId} className="rounded-md border border-emerald-100 px-3 py-2">
+                              <div className="flex items-center justify-between">
+                                <span className="font-medium text-gray-900">{item.title}</span>
+                                <Badge className={PRIORITY_BADGE_CLASS[item.suggestedPriority]}>AI {item.suggestedPriority}</Badge>
+                              </div>
+                              <p className="text-xs text-gray-500">Priority score {item.priorityScore.toFixed(1)} · Overdue days {item.overdueDays}</p>
+                            </li>
+                          ))
+                        ) : (
+                          <li className="text-xs text-muted-foreground">No priority recommendations available.</li>
+                        )}
                       </ul>
                     </div>
                     <div className="space-y-3">
                       <h4 className="text-sm font-semibold text-gray-900">Resource recommendations</h4>
                       <ul className="space-y-2 text-sm text-gray-600">
-                        {aiInsights?.resourceRecommendations.slice(0, 2).map((item) => (
-                          <li key={item.actionId} className="rounded-md bg-white px-3 py-2 shadow-sm">
-                            <p className="font-medium text-gray-900">{item.title}</p>
-                            <ul className="mt-1 list-disc pl-4 text-xs text-gray-600">
-                              {item.recommendations.map((rec) => (
-                                <li key={rec}>{rec}</li>
-                              ))}
-                            </ul>
-                          </li>
-                        )) || <li className="text-xs text-muted-foreground">AI has no resource adjustments at this time.</li>}
+                        {resourceInsights.length > 0 ? (
+                          resourceInsights.map((item) => (
+                            <li key={item.actionId} className="rounded-md bg-white px-3 py-2 shadow-sm">
+                              <p className="font-medium text-gray-900">{item.title}</p>
+                              <ul className="mt-1 list-disc pl-4 text-xs text-gray-600">
+                                {item.recommendations.map((rec) => (
+                                  <li key={rec}>{rec}</li>
+                                ))}
+                              </ul>
+                            </li>
+                          ))
+                        ) : (
+                          <li className="text-xs text-muted-foreground">AI has no resource adjustments at this time.</li>
+                        )}
                       </ul>
                     </div>
                     <div className="space-y-3">
                       <h4 className="text-sm font-semibold text-gray-900">Smart escalation paths</h4>
                       <ul className="space-y-2 text-sm text-gray-600">
-                        {aiInsights?.escalationPaths.slice(0, 2).map((item) => (
-                          <li key={item.actionId} className="rounded-md border border-emerald-100 px-3 py-2">
-                            <p className="font-medium text-gray-900">{item.title}</p>
-                            <p className="text-xs text-gray-500">Trigger: {item.trigger}</p>
-                            <div className="mt-1 flex flex-wrap gap-1">
-                              {item.escalationPath.map((role) => (
-                                <Badge key={role} variant="secondary" className="bg-emerald-50 text-emerald-700">
-                                  {role}
-                                </Badge>
-                              ))}
-                            </div>
-                          </li>
-                        )) || <li className="text-xs text-muted-foreground">All actions operating within standard escalation.</li>}
+                        {escalationInsights.length > 0 ? (
+                          escalationInsights.map((item) => (
+                            <li key={item.actionId} className="rounded-md border border-emerald-100 px-3 py-2">
+                              <p className="font-medium text-gray-900">{item.title}</p>
+                              <p className="text-xs text-gray-500">Trigger: {item.trigger}</p>
+                              <div className="mt-1 flex flex-wrap gap-1">
+                                {item.escalationPath.map((role) => (
+                                  <Badge key={role} variant="secondary" className="bg-emerald-50 text-emerald-700">
+                                    {role}
+                                  </Badge>
+                                ))}
+                              </div>
+                            </li>
+                          ))
+                        ) : (
+                          <li className="text-xs text-muted-foreground">All actions operating within standard escalation.</li>
+                        )}
                       </ul>
                     </div>
                   </CardContent>
@@ -977,22 +997,22 @@ export default function CorrectiveActionsPage() {
                   {renderActionTable(
                     "High Priority Actions",
                     "Critical actions prioritized by AI risk scoring",
-                    dashboardData.priorityLists.highPriority
+                    dashboardData.priorityLists?.highPriority ?? []
                   )}
                   {renderActionTable(
                     "Overdue Actions",
                     "Past-due actions requiring immediate follow-up",
-                    dashboardData.priorityLists.overdue
+                    dashboardData.priorityLists?.overdue ?? []
                   )}
                   {renderActionTable(
                     "Due This Week",
                     "Upcoming deadlines to keep on track",
-                    dashboardData.priorityLists.dueThisWeek
+                    dashboardData.priorityLists?.dueThisWeek ?? []
                   )}
                   {renderActionTable(
                     "Recently Completed",
                     "Latest actions closed with outcomes",
-                    dashboardData.priorityLists.recentlyCompleted
+                    dashboardData.priorityLists?.recentlyCompleted ?? []
                   )}
                 </div>
 
