@@ -25,8 +25,15 @@ from email_service import email_service
 import os
 import httpx
 from fastapi.responses import RedirectResponse
-from google.oauth2 import id_token as google_id_token
-from google.auth.transport import requests as google_requests
+try:
+    from google.oauth2 import id_token as google_id_token
+    from google.auth.transport import requests as google_requests
+except ModuleNotFoundError as exc:  # pragma: no cover - depends on optional dependency
+    google_id_token = None  # type: ignore[assignment]
+    google_requests = None  # type: ignore[assignment]
+    _GOOGLE_IMPORT_ERROR = exc
+else:
+    _GOOGLE_IMPORT_ERROR = None
 
 # Configuration
 SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-this-in-production")
@@ -204,11 +211,22 @@ def _ensure_google_oauth_configured(require_secret: bool = True) -> None:
 def _verify_google_id_token(id_token: str) -> Dict[str, Any]:
     """Validate a Google ID token and return the decoded payload."""
 
+    if _GOOGLE_IMPORT_ERROR is not None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "Google authentication support is not available. "
+                "Install the 'google-auth' dependency to enable it."
+            ),
+        ) from _GOOGLE_IMPORT_ERROR
+
     _ensure_google_oauth_configured(require_secret=False)
 
     try:
-        request = google_requests.Request()
-        return google_id_token.verify_oauth2_token(id_token, request, GOOGLE_CLIENT_ID)
+        request = google_requests.Request()  # type: ignore[union-attr]
+        return google_id_token.verify_oauth2_token(  # type: ignore[union-attr]
+            id_token, request, GOOGLE_CLIENT_ID
+        )
     except ValueError as exc:  # pragma: no cover - depends on external token
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
