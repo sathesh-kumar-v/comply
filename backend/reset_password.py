@@ -6,6 +6,11 @@ Usage: python reset_password.py <username> <new_password>
 import sys
 import os
 from sqlalchemy.orm import Session
+
+from crypto_compat import ensure_bcrypt_about
+
+ensure_bcrypt_about()
+
 from passlib.context import CryptContext
 
 # Add the backend directory to the path
@@ -72,5 +77,5 @@ if __name__ == "__main__":
     
     username = sys.argv[1]
     new_password = sys.argv[2]
-    
+
     reset_user_password(username, new_password)
