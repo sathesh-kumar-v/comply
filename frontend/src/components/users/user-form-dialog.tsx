@@ -27,6 +27,7 @@ const PERMISSION_VALUES = USER_PERMISSION_OPTIONS.map((option) => option.value) 
   ...User["permission_level"][],
 ]
 
+/** Single, stable form schema (password optional in the base type) */
 const baseSchema = z.object({
   first_name: z.string().min(1, "First name is required").max(50, "Max length is 50 characters"),
   last_name: z.string().min(1, "Last name is required").max(50, "Max length is 50 characters"),
@@ -37,14 +38,23 @@ const baseSchema = z.object({
   role: z.enum(ROLE_VALUES),
   permission_level: z.enum(PERMISSION_VALUES),
   timezone: z.string().min(1, "Timezone is required"),
+  // defaults ensure parsed output is boolean (never undefined)
   notifications_email: z.boolean().default(true),
   notifications_sms: z.boolean().default(false),
   is_active: z.boolean().default(true),
   password: z.string().optional(),
 })
 
-const createSchema = baseSchema.extend({
-  password: z.string().min(8, "Password must contain at least 8 characters"),
+/** Create-mode validation: same output type as base, but enforces password rule */
+const createModeSchema = baseSchema.superRefine((val, ctx) => {
+  const pwd = val.password ?? ""
+  if (pwd.length < 8) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["password"],
+      message: "Password must contain at least 8 characters",
+    })
+  }
 })
 
 export type UserFormValues = z.infer<typeof baseSchema>
@@ -68,10 +78,11 @@ export function UserFormDialog({
   initialUser,
   submitting = false,
 }: UserFormDialogProps) {
-  const resolver = mode === "create" ? createSchema : baseSchema
+  // Pick the schema by mode, but keep a single stable output type
+  const schema = useMemo(() => (mode === "create" ? createModeSchema : baseSchema), [mode])
 
   const form = useForm<UserFormValues>({
-    resolver: zodResolver(resolver),
+    resolver: zodResolver(schema),
     defaultValues: {
       first_name: "",
       last_name: "",
@@ -95,9 +106,7 @@ export function UserFormDialog({
   const recommendedPermission = ROLE_PERMISSION_DEFAULT[selectedRole]
 
   useEffect(() => {
-    if (!open) {
-      return
-    }
+    if (!open) return
 
     if (mode === "edit" && initialUser) {
       reset({
@@ -256,7 +265,7 @@ export function UserFormDialog({
                 <div className="flex items-start gap-3">
                   <Sparkles className="mt-0.5 h-5 w-5 text-primary" />
                   <div>
-                    <p className="font-medium text-sm text-primary">AI-Driven Recommendation</p>
+                    <p className="text-sm font-medium text-primary">AI-Driven Recommendation</p>
                     <p className="text-xs text-primary/80">
                       Based on the selected role we recommend {permissionLabel} permissions to balance productivity and risk.
                     </p>
