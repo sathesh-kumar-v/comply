@@ -29,7 +29,7 @@ const formatPermissionLevel = (level?: string | null) => {
 };
 
 export default function SettingsPage() {
-  const { user, updateProfile } = useAuth();
+  const { user, updateProfile, changePassword } = useAuth();
   const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'notifications' | 'appearance'>('profile');
   const { security, updateSecurity } = useSettings();
   const [profileForm, setProfileForm] = useState({
@@ -40,6 +40,13 @@ export default function SettingsPage() {
   });
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [profileMessage, setProfileMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  });
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
+  const [passwordMessage, setPasswordMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
     if (!user) {
@@ -76,6 +83,17 @@ export default function SettingsPage() {
     }
 
     setProfileForm((previous) => ({
+      ...previous,
+      [field]: event.target.value,
+    }));
+  };
+
+  const handlePasswordChange = (field: keyof typeof passwordForm) => (event: ChangeEvent<HTMLInputElement>) => {
+    if (passwordMessage) {
+      setPasswordMessage(null);
+    }
+
+    setPasswordForm((previous) => ({
       ...previous,
       [field]: event.target.value,
     }));
@@ -125,6 +143,54 @@ export default function SettingsPage() {
       setProfileMessage({ type: 'error', text: message });
     } finally {
       setIsSavingProfile(false);
+    }
+  };
+
+  const isPasswordFormValid = useMemo(() => {
+    const current = passwordForm.currentPassword.trim();
+    const next = passwordForm.newPassword.trim();
+    const confirm = passwordForm.confirmPassword.trim();
+
+    if (!current || !next || !confirm) {
+      return false;
+    }
+
+    if (next.length < 8) {
+      return false;
+    }
+
+    return next === confirm;
+  }, [passwordForm]);
+
+  const handlePasswordSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!isPasswordFormValid || isUpdatingPassword) {
+      return;
+    }
+
+    setIsUpdatingPassword(true);
+    setPasswordMessage(null);
+
+    try {
+      await changePassword(passwordForm.currentPassword, passwordForm.newPassword);
+      setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      setPasswordMessage({ type: 'success', text: 'Password updated successfully.' });
+    } catch (error) {
+      let message = 'Unable to update password. Please try again.';
+
+      if (isAxiosError(error)) {
+        const detail = error.response?.data?.detail;
+        if (typeof detail === 'string' && detail.trim().length > 0) {
+          message = detail;
+        }
+      } else if (error instanceof Error && error.message) {
+        message = error.message;
+      }
+
+      setPasswordMessage({ type: 'error', text: message });
+    } finally {
+      setIsUpdatingPassword(false);
     }
   };
 
@@ -422,13 +488,22 @@ export default function SettingsPage() {
               </div>
               <Separator />
 
-              <div className="space-y-4 max-w-md">
+              <form className="space-y-4 max-w-md" onSubmit={handlePasswordSubmit}>
+                {passwordMessage && (
+                  <Alert variant={passwordMessage.type === 'error' ? 'destructive' : 'default'}>
+                    <AlertDescription>{passwordMessage.text}</AlertDescription>
+                  </Alert>
+                )}
+
                 <div>
                   <Label htmlFor="currentPassword">Current Password</Label>
                   <Input
                     id="currentPassword"
                     type="password"
                     placeholder="Enter current password"
+                    value={passwordForm.currentPassword}
+                    onChange={handlePasswordChange('currentPassword')}
+                    required
                   />
                 </div>
 
@@ -438,6 +513,10 @@ export default function SettingsPage() {
                     id="newPassword"
                     type="password"
                     placeholder="Enter new password"
+                    value={passwordForm.newPassword}
+                    onChange={handlePasswordChange('newPassword')}
+                    minLength={8}
+                    required
                   />
                 </div>
 
@@ -447,13 +526,17 @@ export default function SettingsPage() {
                     id="confirmPassword"
                     type="password"
                     placeholder="Confirm new password"
+                    value={passwordForm.confirmPassword}
+                    onChange={handlePasswordChange('confirmPassword')}
+                    minLength={8}
+                    required
                   />
                 </div>
 
-                <Button disabled>
-                  Update Password
+                <Button type="submit" disabled={!isPasswordFormValid || isUpdatingPassword}>
+                  {isUpdatingPassword ? 'Updating...' : 'Update Password'}
                 </Button>
-              </div>
+              </form>
             </div>
           </Card>
 

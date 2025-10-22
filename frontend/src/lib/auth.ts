@@ -96,6 +96,11 @@ export interface UpdateCurrentUserPayload {
   phone?: string
 }
 
+export interface ChangePasswordPayload {
+  currentPassword: string
+  newPassword: string
+}
+
 class AuthService {
   private apiClient = axios.create({
     baseURL: API_BASE_URL,
@@ -228,6 +233,13 @@ class AuthService {
   async updateCurrentUser(userData: UpdateCurrentUserPayload): Promise<User> {
     const response = await this.apiClient.patch('/auth/me', userData)
     return response.data
+  }
+
+  async changePassword(currentPassword: string, newPassword: string): Promise<void> {
+    await this.apiClient.post('/auth/change-password', {
+      current_password: currentPassword,
+      new_password: newPassword
+    })
   }
 
   logout(): void {
