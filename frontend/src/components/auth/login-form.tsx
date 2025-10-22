@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { useAuth } from '@/contexts/auth-context'
 import { useSettings } from '@/contexts/settings-context'
+import { authService } from '@/lib/auth'
 
 // Updated schema to accept either username or email
 const loginSchema = z.object({
@@ -34,7 +35,7 @@ interface LoginFormProps {}
 export function LoginForm() {
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
-  const { login, loginWithOAuth } = useAuth()
+  const { login } = useAuth()
   const { security } = useSettings()
   const router = useRouter()
 
@@ -74,30 +75,22 @@ export function LoginForm() {
     }
   }
 
-  const handleGoogleLogin = async () => {
+  const handleGoogleLogin = () => {
     if (!security.googleOAuthEnabled) return
     setSocialError('')
     setError('')
-    const email = typeof window !== 'undefined'
-      ? window.prompt('Enter your Google Workspace email to continue with Google Sign-In')?.trim()
-      : ''
-    if (!email) {
-      setSocialError('Google sign-in cancelled before email confirmation.')
-      return
-    }
     setIsSocialLoading(true)
     try {
-      const [givenName = '', familyName = ''] = email.split('@')[0].split('.')
-      await loginWithOAuth('google', {
-        email,
-        given_name: givenName ? givenName.charAt(0).toUpperCase() + givenName.slice(1) : undefined,
-        family_name: familyName ? familyName.charAt(0).toUpperCase() + familyName.slice(1) : undefined,
-      })
-      router.push('/dashboard')
+      if (typeof window === 'undefined') {
+        throw new Error('Google sign-in is only available in the browser')
+      }
+      const redirectTarget = '/dashboard'
+      const startUrl = authService.getOAuthStartUrl('google', redirectTarget)
+      window.location.href = startUrl
     } catch (err: any) {
-      const errorMessage = err.response?.data?.detail || err.message || 'Unable to sign in with Google right now.'
+      console.error('Failed to initiate Google OAuth flow:', err)
+      const errorMessage = err.response?.data?.detail || err.message || 'Unable to connect to Google right now.'
       setSocialError(errorMessage)
-    } finally {
       setIsSocialLoading(false)
     }
   }

@@ -16,3 +16,5 @@ python-dateutil
 tzdata
 openai>=1.40.0
 python-dotenv==1.0.1
+google-auth==2.35.0
+httpx==0.27.2

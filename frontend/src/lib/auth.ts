@@ -150,13 +150,6 @@ class AuthService {
     return authData
   }
 
-  async loginWithOAuth(provider: 'google' | 'microsoft', payload: Record<string, unknown> = {}): Promise<AuthResponse> {
-    const response = await this.apiClient.post(`/auth/oauth/${provider}`, payload)
-    const authData = response.data
-    this.setToken(authData.access_token)
-    return authData
-  }
-
   async requestPasswordReset(email: string): Promise<void> {
     await this.apiClient.post('/auth/password-reset/request', { email })
   }
@@ -253,6 +246,35 @@ class AuthService {
     if (typeof window !== 'undefined') {
       localStorage.setItem('auth_token', token)
     }
+  }
+
+  saveToken(token: string): void {
+    this.setToken(token)
+  }
+
+  clearStoredToken(): void {
+    this.clearToken()
+  }
+
+  getOAuthStartUrl(provider: 'google' | 'microsoft', redirectTo?: string): string {
+    const normalizedBase = API_BASE_URL.replace(/\/$/, '')
+    const path = `${normalizedBase}/auth/oauth/${provider}/start`
+
+    let url: URL
+    if (path.startsWith('http://') || path.startsWith('https://')) {
+      url = new URL(path)
+    } else {
+      if (typeof window === 'undefined') {
+        throw new Error('OAuth URLs can only be generated in a browser context')
+      }
+      url = new URL(path, window.location.origin)
+    }
+
+    if (redirectTo) {
+      url.searchParams.set('redirect_to', redirectTo)
+    }
+
+    return url.toString()
   }
 
   private getToken(): string | null {

@@ -4,13 +4,14 @@ from sqlalchemy.orm import Session
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Any, Dict
 import json
 import secrets
 import pyotp
 import qrcode
 import io
 import base64
+from urllib.parse import urlencode
 
 from database import get_db
 from models import User, UserRole, PasswordResetToken, MFAMethod, PermissionLevel
@@ -22,6 +23,10 @@ from schemas import (
 )
 from email_service import email_service
 import os
+import httpx
+from fastapi.responses import RedirectResponse
+from google.oauth2 import id_token as google_id_token
+from google.auth.transport import requests as google_requests
 
 # Configuration
 SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-this-in-production")
@@ -33,6 +38,256 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer()
 
 router = APIRouter()
+
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
+GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI")
+FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "http://localhost:3000")
+GOOGLE_OAUTH_SUCCESS_PATH = os.getenv("GOOGLE_OAUTH_SUCCESS_PATH", "/auth/oauth/google/callback")
+GOOGLE_OAUTH_SCOPES = os.getenv("GOOGLE_OAUTH_SCOPES", "openid email profile")
+GOOGLE_OAUTH_PROMPT = os.getenv("GOOGLE_OAUTH_PROMPT")
+
+try:
+    OAUTH_STATE_TTL_SECONDS = int(os.getenv("GOOGLE_OAUTH_STATE_TTL", "600"))
+except ValueError:
+    OAUTH_STATE_TTL_SECONDS = 600
+
+_oauth_state_store: Dict[str, Dict[str, Any]] = {}
+
+
+def _cleanup_expired_oauth_states() -> None:
+    """Remove expired OAuth state entries from the in-memory store."""
+
+    if not _oauth_state_store:
+        return
+
+    now = datetime.utcnow()
+    expired_states = [
+        state
+        for state, data in _oauth_state_store.items()
+        if now - data.get("created_at", now) > timedelta(seconds=OAUTH_STATE_TTL_SECONDS)
+    ]
+    for state in expired_states:
+        _oauth_state_store.pop(state, None)
+
+
+def _store_oauth_state(state: str, *, redirect_to: Optional[str] = None) -> None:
+    """Persist OAuth state with optional redirect information."""
+
+    _cleanup_expired_oauth_states()
+    _oauth_state_store[state] = {
+        "created_at": datetime.utcnow(),
+        "redirect_to": redirect_to,
+    }
+
+
+def _pop_oauth_state(state: str) -> Optional[Dict[str, Any]]:
+    """Retrieve and remove OAuth state if it is still valid."""
+
+    data = _oauth_state_store.pop(state, None)
+    if not data:
+        return None
+
+    if datetime.utcnow() - data.get("created_at", datetime.utcnow()) > timedelta(seconds=OAUTH_STATE_TTL_SECONDS):
+        return None
+
+    return data
+
+
+def _normalize_redirect_path(redirect_to: Optional[str]) -> Optional[str]:
+    """Ensure redirect destinations remain within the frontend application."""
+
+    if not redirect_to:
+        return None
+
+    redirect_to = redirect_to.strip()
+    if not redirect_to:
+        return None
+
+    if redirect_to.startswith("http://") or redirect_to.startswith("https://"):
+        # Prevent open redirects to external sites
+        return None
+
+    if redirect_to.startswith("//"):
+        return None
+
+    if not redirect_to.startswith("/"):
+        redirect_to = f"/{redirect_to}"
+
+    return redirect_to
+
+
+def _build_frontend_redirect(*, token: Optional[str] = None, error: Optional[str] = None, redirect_to: Optional[str] = None) -> str:
+    base_url = FRONTEND_BASE_URL.rstrip("/")
+    success_path = GOOGLE_OAUTH_SUCCESS_PATH or "/auth/oauth/google/callback"
+    if not success_path.startswith("/"):
+        success_path = f"/{success_path}"
+
+    params = {}
+    if token:
+        params["token"] = token
+    if error:
+        params["error"] = error
+    if redirect_to:
+        params["redirect"] = redirect_to
+
+    query = urlencode(params)
+    return f"{base_url}{success_path}{'?' + query if query else ''}"
+
+
+def _ensure_google_oauth_configured(require_secret: bool = True) -> None:
+    if not GOOGLE_CLIENT_ID or not GOOGLE_REDIRECT_URI:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Google OAuth is not configured",
+        )
+    if require_secret and not GOOGLE_CLIENT_SECRET:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Google OAuth client secret is not configured",
+        )
+
+
+def _verify_google_id_token(id_token: str) -> Dict[str, Any]:
+    """Validate a Google ID token and return the decoded payload."""
+
+    _ensure_google_oauth_configured(require_secret=False)
+
+    try:
+        request = google_requests.Request()
+        return google_id_token.verify_oauth2_token(id_token, request, GOOGLE_CLIENT_ID)
+    except ValueError as exc:  # pragma: no cover - depends on external token
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid Google ID token",
+        ) from exc
+
+
+def _generate_unique_username(db: Session, base_username: str) -> str:
+    candidate = base_username
+    suffix = 1
+    while get_user_by_username(db, candidate):
+        candidate = f"{base_username}{suffix}"
+        suffix += 1
+    return candidate
+
+
+def _get_or_create_google_user(
+    db: Session,
+    *,
+    email: str,
+    given_name: Optional[str],
+    family_name: Optional[str],
+    email_verified: bool,
+    picture: Optional[str] = None,
+) -> User:
+    email = email.lower()
+    user = get_user_by_email(db, email)
+
+    if not user:
+        username_base = email.split("@")[0]
+        username_base = username_base.replace("+", ".")
+        username_candidate = _generate_unique_username(db, username_base)
+
+        default_first = given_name or username_base.split(".")[0].capitalize() or "User"
+        domain_part = email.split("@")[1]
+        default_last = family_name or domain_part.split(".")[0].capitalize()
+
+        user = User(
+            email=email,
+            username=username_candidate,
+            first_name=default_first,
+            last_name=default_last,
+            hashed_password=get_password_hash(secrets.token_urlsafe(32)),
+            role=UserRole.EMPLOYEE,
+            permission_level=ROLE_PERMISSION_DEFAULT.get(UserRole.EMPLOYEE, PermissionLevel.VIEW_ONLY),
+            is_active=True,
+            is_verified=email_verified,
+        )
+        if picture:
+            user.avatar_url = picture
+
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        return user
+
+    updated = False
+
+    if email_verified and not user.is_verified:
+        user.is_verified = True
+        updated = True
+
+    if given_name and given_name != user.first_name:
+        user.first_name = given_name
+        updated = True
+
+    if family_name and family_name != user.last_name:
+        user.last_name = family_name
+        updated = True
+
+    if picture and not user.avatar_url:
+        user.avatar_url = picture
+        updated = True
+
+    if updated:
+        db.commit()
+        db.refresh(user)
+
+    return user
+
+
+def _issue_token_for_user(db: Session, user: User) -> Token:
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is disabled")
+
+    user.permission_level = ROLE_PERMISSION_DEFAULT.get(user.role, PermissionLevel.VIEW_ONLY)
+    user.last_login = datetime.utcnow()
+    db.commit()
+    db.refresh(user)
+
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.username},
+        expires_delta=access_token_expires,
+    )
+
+    return Token(
+        access_token=access_token,
+        token_type="bearer",
+        expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        user=UserResponse.model_validate(user),
+    )
+
+
+async def _exchange_code_for_tokens(code: str) -> Dict[str, Any]:
+    _ensure_google_oauth_configured(require_secret=True)
+
+    token_endpoint = "https://oauth2.googleapis.com/token"
+    payload = {
+        "code": code,
+        "client_id": GOOGLE_CLIENT_ID,
+        "client_secret": GOOGLE_CLIENT_SECRET,
+        "redirect_uri": GOOGLE_REDIRECT_URI,
+        "grant_type": "authorization_code",
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(token_endpoint, data=payload)
+    except httpx.HTTPError as exc:  # pragma: no cover - network errors
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Unable to contact Google OAuth services",
+        ) from exc
+
+    if response.status_code >= 400:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Failed to exchange authorization code",
+        )
+
+    return response.json()
 
 
 def _normalize_role_name(role: str) -> str:
@@ -316,6 +571,122 @@ async def login(user_credentials: UserLogin, db: Session = Depends(get_db)):
     )
 
 
+@router.get(
+    "/oauth/google/start",
+    include_in_schema=False,
+    summary="Begin the Google OAuth login flow",
+    description="Redirects the user to Google's OAuth consent screen."
+)
+async def oauth_google_start(redirect_to: Optional[str] = None):
+    _ensure_google_oauth_configured(require_secret=False)
+
+    normalized_redirect = _normalize_redirect_path(redirect_to)
+    state = secrets.token_urlsafe(32)
+    _store_oauth_state(state, redirect_to=normalized_redirect)
+
+    params = {
+        "client_id": GOOGLE_CLIENT_ID,
+        "redirect_uri": GOOGLE_REDIRECT_URI,
+        "response_type": "code",
+        "scope": GOOGLE_OAUTH_SCOPES,
+        "access_type": "offline",
+        "include_granted_scopes": "true",
+        "state": state,
+        "prompt": GOOGLE_OAUTH_PROMPT or "select_account",
+    }
+
+    auth_url = f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}"
+    return RedirectResponse(auth_url)
+
+
+@router.get(
+    "/oauth/google/callback",
+    include_in_schema=False,
+    summary="Handle Google OAuth callback",
+    description="Exchanges the authorization code for tokens and issues a Comply-X session token."
+)
+async def oauth_google_callback(
+    code: Optional[str] = None,
+    state: Optional[str] = None,
+    error: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    redirect_to: Optional[str] = None
+    state_data: Optional[Dict[str, Any]] = None
+
+    if state:
+        state_data = _pop_oauth_state(state)
+        if state_data:
+            redirect_to = _normalize_redirect_path(state_data.get("redirect_to"))
+
+    if error:
+        redirect_url = _build_frontend_redirect(error=error, redirect_to=redirect_to)
+        return RedirectResponse(redirect_url, status_code=status.HTTP_302_FOUND)
+
+    if not code or not state or not state_data:
+        redirect_url = _build_frontend_redirect(
+            error="Invalid OAuth response",
+            redirect_to=redirect_to,
+        )
+        return RedirectResponse(redirect_url, status_code=status.HTTP_302_FOUND)
+
+    try:
+        token_response = await _exchange_code_for_tokens(code)
+    except HTTPException as exc:
+        message = exc.detail if isinstance(exc.detail, str) else "Failed to complete Google sign-in"
+        redirect_url = _build_frontend_redirect(error=message, redirect_to=redirect_to)
+        return RedirectResponse(redirect_url, status_code=status.HTTP_302_FOUND)
+
+    id_token_value = token_response.get("id_token")
+    if not id_token_value:
+        redirect_url = _build_frontend_redirect(
+            error="Google did not return an ID token",
+            redirect_to=redirect_to,
+        )
+        return RedirectResponse(redirect_url, status_code=status.HTTP_302_FOUND)
+
+    try:
+        google_profile = _verify_google_id_token(id_token_value)
+    except HTTPException as exc:
+        message = exc.detail if isinstance(exc.detail, str) else "Invalid Google ID token"
+        redirect_url = _build_frontend_redirect(error=message, redirect_to=redirect_to)
+        return RedirectResponse(redirect_url, status_code=status.HTTP_302_FOUND)
+
+    email = google_profile.get("email")
+    if not email:
+        redirect_url = _build_frontend_redirect(
+            error="Google account email is unavailable",
+            redirect_to=redirect_to,
+        )
+        return RedirectResponse(redirect_url, status_code=status.HTTP_302_FOUND)
+
+    if not google_profile.get("email_verified", False):
+        redirect_url = _build_frontend_redirect(
+            error="Google account email is not verified",
+            redirect_to=redirect_to,
+        )
+        return RedirectResponse(redirect_url, status_code=status.HTTP_302_FOUND)
+
+    user = _get_or_create_google_user(
+        db,
+        email=email,
+        given_name=google_profile.get("given_name"),
+        family_name=google_profile.get("family_name"),
+        email_verified=True,
+        picture=google_profile.get("picture"),
+    )
+
+    try:
+        token = _issue_token_for_user(db, user)
+    except HTTPException as exc:
+        message = exc.detail if isinstance(exc.detail, str) else "Unable to sign in"
+        redirect_url = _build_frontend_redirect(error=message, redirect_to=redirect_to)
+        return RedirectResponse(redirect_url, status_code=status.HTTP_302_FOUND)
+
+    redirect_url = _build_frontend_redirect(token=token.access_token, redirect_to=redirect_to)
+    return RedirectResponse(redirect_url, status_code=status.HTTP_302_FOUND)
+
+
 @router.post(
     "/oauth/google",
     response_model=Token,
@@ -326,58 +697,32 @@ async def oauth_google_login(
     payload: GoogleOAuthRequest,
     db: Session = Depends(get_db)
 ):
-    if not payload.email:
+    if not payload.id_token:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Google ID token is required",
+        )
+
+    google_profile = _verify_google_id_token(payload.id_token)
+    email = google_profile.get("email") or payload.email
+
+    if not email:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Google account email is required")
 
-    email = payload.email.lower()
-    user = get_user_by_email(db, email)
+    email_verified = bool(google_profile.get("email_verified", False))
+    if not email_verified:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Google account email is not verified")
 
-    if not user:
-        username_base = email.split("@")[0]
-        username_candidate = username_base
-        suffix = 1
-        while get_user_by_username(db, username_candidate):
-            username_candidate = f"{username_base}{suffix}"
-            suffix += 1
-
-        first_name = payload.given_name or username_base.capitalize()
-        last_name = payload.family_name or email.split("@")[1].split(".")[0].capitalize()
-
-        user = User(
-            email=email,
-            username=username_candidate,
-            first_name=first_name,
-            last_name=last_name,
-            hashed_password=get_password_hash(secrets.token_urlsafe(16)),
-            role=UserRole.EMPLOYEE,
-            permission_level=ROLE_PERMISSION_DEFAULT.get(UserRole.EMPLOYEE, PermissionLevel.VIEW_ONLY),
-            is_active=True,
-            is_verified=True,
-        )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-
-    if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is disabled")
-
-    user.permission_level = ROLE_PERMISSION_DEFAULT.get(user.role, PermissionLevel.VIEW_ONLY)
-    user.last_login = datetime.utcnow()
-    db.commit()
-    db.refresh(user)
-
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": user.username},
-        expires_delta=access_token_expires
+    user = _get_or_create_google_user(
+        db,
+        email=email,
+        given_name=google_profile.get("given_name") or payload.given_name,
+        family_name=google_profile.get("family_name") or payload.family_name,
+        email_verified=email_verified,
+        picture=google_profile.get("picture"),
     )
 
-    return Token(
-        access_token=access_token,
-        token_type="bearer",
-        expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-        user=UserResponse.model_validate(user)
-    )
+    return _issue_token_for_user(db, user)
 
 @router.get("/me",
             response_model=UserResponse,
