@@ -63,8 +63,11 @@ import {
   type CorrectiveActionDashboardResponse,
   type CorrectiveActionDetail,
   type CorrectiveActionListEntry,
+  type CorrectiveActionSummary,
   type CorrectiveActionSummaryMetric,
   type CorrectiveActionAIInsights,
+  type ActionAIIntelligence,
+  type EffectivenessEvaluationDetail,
   type ActionPriority,
   type ActionStatus,
   type StepStatus,
@@ -184,6 +187,30 @@ const INITIAL_STEP: ImplementationStepForm = {
   successCriteria: ""
 }
 
+const DEFAULT_EFFECTIVENESS_EVALUATION: EffectivenessEvaluationDetail = {
+  evaluationDueDate: "",
+  evaluationMethod: "Not specified",
+  successMetrics: [],
+  rating: "Not rated",
+  comments: null,
+  furtherActionsRequired: false,
+  followUpActions: null
+}
+
+const DEFAULT_AI_INTELLIGENCE: ActionAIIntelligence = {
+  effectivenessScore: 0,
+  successProbability: 0,
+  predictedCompletionDate: null,
+  progressConfidence: 0,
+  riskAlerts: [],
+  resourceRecommendations: [],
+  escalationPath: [],
+  automatedTracking: "No automated tracking data available.",
+  riskAssessment: "No AI risk assessment available.",
+  effectivenessReview: "No AI effectiveness review available.",
+  completionForecast: "No AI forecast available."
+}
+
 const INITIAL_FORM_VALUES = {
   title: "",
   actionType: "",
@@ -263,6 +290,73 @@ function computeStepProgress(steps: ImplementationStepDetail[]): number {
   }, 0)
   return Math.min(100, Math.round((score / steps.length) * 100))
 }
+
+function normalizeSummaryMetric(
+  metric?: CorrectiveActionSummaryMetric | null
+): CorrectiveActionSummaryMetric {
+  return {
+    value: metric?.value ?? 0,
+    trend: metric?.trend ?? 0,
+    direction: metric?.direction ?? "flat"
+  }
+}
+
+function normalizeDashboardResponse(
+  response: Partial<CorrectiveActionDashboardResponse>
+): CorrectiveActionDashboardResponse {
+  const summary = (response.summary ?? {}) as Partial<CorrectiveActionSummary>
+  return {
+    summary: {
+      totalActions: normalizeSummaryMetric(summary.totalActions),
+      openActions: normalizeSummaryMetric(summary.openActions),
+      overdueActions: normalizeSummaryMetric(summary.overdueActions),
+      completedThisMonth: normalizeSummaryMetric(summary.completedThisMonth),
+      effectivenessRating: normalizeSummaryMetric(summary.effectivenessRating)
+    },
+    analytics: {
+      statusDistribution: response.analytics?.statusDistribution ?? [],
+      actionsByDepartment: response.analytics?.actionsByDepartment ?? [],
+      actionTypeDistribution: response.analytics?.actionTypeDistribution ?? [],
+      completionTrend: response.analytics?.completionTrend ?? []
+    },
+    priorityLists: {
+      highPriority: response.priorityLists?.highPriority ?? [],
+      overdue: response.priorityLists?.overdue ?? [],
+      dueThisWeek: response.priorityLists?.dueThisWeek ?? [],
+      recentlyCompleted: response.priorityLists?.recentlyCompleted ?? []
+    },
+    actions: response.actions ?? [],
+    aiInsights: {
+      effectivenessScores: response.aiInsights?.effectivenessScores ?? [],
+      priorityRanking: response.aiInsights?.priorityRanking ?? [],
+      resourceRecommendations: response.aiInsights?.resourceRecommendations ?? [],
+      escalationPaths: response.aiInsights?.escalationPaths ?? []
+    }
+  }
+}
+
+function normalizeActionDetail(detail: CorrectiveActionDetail): CorrectiveActionDetail {
+  return {
+    ...detail,
+    reviewTeam: detail.reviewTeam ?? [],
+    departments: detail.departments ?? [],
+    evidence: detail.evidence ?? [],
+    implementationSteps: detail.implementationSteps ?? [],
+    communicationLog: detail.communicationLog ?? [],
+    effectivenessEvaluation: {
+      ...DEFAULT_EFFECTIVENESS_EVALUATION,
+      ...(detail.effectivenessEvaluation ?? {}),
+      successMetrics: detail.effectivenessEvaluation?.successMetrics ?? []
+    },
+    aiIntelligence: {
+      ...DEFAULT_AI_INTELLIGENCE,
+      ...(detail.aiIntelligence ?? {}),
+      riskAlerts: detail.aiIntelligence?.riskAlerts ?? [],
+      resourceRecommendations: detail.aiIntelligence?.resourceRecommendations ?? [],
+      escalationPath: detail.aiIntelligence?.escalationPath ?? []
+    }
+  }
+}
 export default function CorrectiveActionsPage() {
   const [activeTab, setActiveTab] = useState<"dashboard" | "create" | "tracking">("dashboard")
   const [dashboardData, setDashboardData] = useState<CorrectiveActionDashboardResponse | null>(null)
@@ -296,8 +390,8 @@ export default function CorrectiveActionsPage() {
         if (!response.ok) {
           throw new Error("Failed to load corrective actions dashboard data")
         }
-        const data = (await response.json()) as CorrectiveActionDashboardResponse
-        setDashboardData(data)
+        const data = (await response.json()) as Partial<CorrectiveActionDashboardResponse>
+        setDashboardData(normalizeDashboardResponse(data))
       } catch (error) {
         console.error(error)
         setDashboardError(error instanceof Error ? error.message : "Unable to load dashboard data")
@@ -343,9 +437,13 @@ export default function CorrectiveActionsPage() {
           throw new Error("Failed to load corrective action detail")
         }
         const detail = (await response.json()) as CorrectiveActionDetail
+        const normalizedDetail = normalizeActionDetail(detail)
         setActionDetail({
-          ...detail,
-          progress: detail.progress ?? computeStepProgress(detail.implementationSteps)
+          ...normalizedDetail,
+          progress:
+            typeof normalizedDetail.progress === "number"
+              ? normalizedDetail.progress
+              : computeStepProgress(normalizedDetail.implementationSteps)
         })
       } catch (error) {
         console.error(error)
@@ -578,8 +676,8 @@ export default function CorrectiveActionsPage() {
       if (!response.ok) {
         throw new Error("Failed to refresh dashboard data")
       }
-      const data = (await response.json()) as CorrectiveActionDashboardResponse
-      setDashboardData(data)
+      const data = (await response.json()) as Partial<CorrectiveActionDashboardResponse>
+      setDashboardData(normalizeDashboardResponse(data))
     } catch (error) {
       console.error(error)
       setDashboardError(error instanceof Error ? error.message : "Unable to refresh dashboard data")
