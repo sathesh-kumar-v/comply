@@ -145,10 +145,11 @@ export interface IncidentRootCauseRecord {
   rcaEvidence: Record<string, unknown>[]
 }
 
-export interface IncidentDetail extends IncidentRecord {
+export type IncidentDetail = Omit<IncidentRecord, "rootCause"> & {
   attachments: IncidentAttachmentRecord[]
   activities: IncidentActivityRecord[]
-  rootCause: IncidentRootCauseRecord
+  // If detail might be missing, keep it nullable; otherwise drop `| null`.
+  rootCause: IncidentRootCauseRecord | null
   aiInvestigation?: Record<string, unknown>
 }
 
