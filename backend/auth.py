@@ -84,7 +84,8 @@ def _derive_default_redirect_uri() -> Optional[str]:
 
             return f"{api_base}/api/auth/oauth/google/callback"
 
-    frontend_base = os.getenv("FRONTEND_BASE_URL", "")
+    frontend_base = os.getenv("FRONTEND_BASE_URL", "http://localhost:3000")
+
     if any(token in frontend_base for token in {"localhost", "127.0.0.1"}):
         # Fall back to the conventional local FastAPI port when running locally.
         return "http://localhost:8000/api/auth/oauth/google/callback"
