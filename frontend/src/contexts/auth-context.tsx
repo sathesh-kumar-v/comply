@@ -1,6 +1,6 @@
 "use client"
 
-import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react'
+import React, { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react'
 import {
   authService,
   User,
@@ -13,12 +13,12 @@ interface AuthContextType {
   user: User | null
   loading: boolean
   login: (credentials: LoginCredentials) => Promise<void>
-  loginWithOAuth: (provider: 'google' | 'microsoft', payload?: Record<string, unknown>) => Promise<void>
   register: (userData: RegisterData) => Promise<void>
   logout: () => void
   isAuthenticated: boolean
   updateProfile: (updates: UpdateCurrentUserPayload) => Promise<User>
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>
+  refreshUser: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -39,42 +39,44 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
 
+  const refreshUser = useCallback(async () => {
+    if (typeof window === 'undefined' || !authService.isAuthenticated()) {
+      setUser(null)
+      return
+    }
+
+    try {
+      const currentUser = await authService.getCurrentUser()
+      setUser(currentUser)
+    } catch (error) {
+      console.error('Failed to refresh authenticated user:', error)
+      if (typeof authService.clearStoredToken === 'function') {
+        authService.clearStoredToken()
+      }
+      setUser(null)
+      throw error
+    }
+  }, [])
+
   useEffect(() => {
     const initAuth = async () => {
       if (typeof window !== 'undefined' && authService.isAuthenticated()) {
         try {
-          const currentUser = await authService.getCurrentUser()
-          setUser(currentUser)
+          await refreshUser()
         } catch (error) {
-          console.error('Failed to get current user:', error)
-          authService.logout()
+          console.error('Failed to initialize session from stored token:', error)
         }
       }
       setLoading(false)
     }
 
     initAuth()
-  }, [])
+  }, [refreshUser])
 
   const login = async (credentials: LoginCredentials) => {
     setLoading(true)
     try {
       const authResponse = await authService.login(credentials)
-      setUser(authResponse.user)
-    } catch (error) {
-      throw error
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const loginWithOAuth = async (
-    provider: 'google' | 'microsoft',
-    payload: Record<string, unknown> = {}
-  ) => {
-    setLoading(true)
-    try {
-      const authResponse = await authService.loginWithOAuth(provider, payload)
       setUser(authResponse.user)
     } catch (error) {
       throw error
@@ -115,12 +117,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
     user,
     loading,
     login,
-    loginWithOAuth,
     register,
     logout,
     isAuthenticated: !!user,
     updateProfile,
     changePassword,
+    refreshUser,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
