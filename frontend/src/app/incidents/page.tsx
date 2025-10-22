@@ -755,16 +755,20 @@ export default function IncidentsPage() {
     }
   }, [selectedIncidentId])
 
+  // ✅ Null-safe seeding of RCA form from selectedIncident.rootCause
   useEffect(() => {
     if (!selectedIncident) return
+    const rc = selectedIncident.rootCause
+
     setRcaForm({
-      method: selectedIncident.rootCause.rcaMethod || "5 Whys",
-      primary: selectedIncident.rootCause.primaryRootCause || "",
-      factors: selectedIncident.rootCause.factors.map((factor) => ({
-        description: factor.description,
-        category: factor.category,
-        impactLevel: factor.impactLevel,
-      })),
+      method: rc?.rcaMethod || "5 Whys",
+      primary: rc?.primaryRootCause || "",
+      factors:
+        rc?.factors?.map((factor) => ({
+          description: factor.description,
+          category: factor.category,
+          impactLevel: factor.impactLevel,
+        })) ?? [],
     })
   }, [selectedIncident])
 
@@ -1016,8 +1020,9 @@ export default function IncidentsPage() {
         rcaMethod: rcaForm.method,
         primaryRootCause: rcaForm.primary,
         factors: rcaForm.factors,
-        rcaDiagram: selectedIncident?.rootCause.rcaDiagram ?? null,
-        rcaEvidence: selectedIncident?.rootCause.rcaEvidence ?? [],
+        // ✅ Null-safe reads from selectedIncident.rootCause
+        rcaDiagram: selectedIncident?.rootCause?.rcaDiagram ?? null,
+        rcaEvidence: selectedIncident?.rootCause?.rcaEvidence ?? [],
       }
       const detail = await saveIncidentRootCause(selectedIncidentId, payload)
       setSelectedIncident(detail)
