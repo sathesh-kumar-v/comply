@@ -2,7 +2,6 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from datetime import datetime, timedelta
 from typing import Optional, Any, Dict
 import json
@@ -12,6 +11,12 @@ import qrcode
 import io
 import base64
 from urllib.parse import urlencode, urlparse
+
+from crypto_compat import ensure_bcrypt_about
+
+ensure_bcrypt_about()
+
+from passlib.context import CryptContext
 
 from database import get_db
 from models import User, UserRole, PasswordResetToken, MFAMethod, PermissionLevel
