@@ -18,6 +18,7 @@ interface AuthContextType {
   logout: () => void
   isAuthenticated: boolean
   updateProfile: (updates: UpdateCurrentUserPayload) => Promise<User>
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -106,6 +107,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     return updatedUser
   }
 
+  const changePassword = async (currentPassword: string, newPassword: string) => {
+    await authService.changePassword(currentPassword, newPassword)
+  }
+
   const value: AuthContextType = {
     user,
     loading,
@@ -115,6 +120,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     logout,
     isAuthenticated: !!user,
     updateProfile,
+    changePassword,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

@@ -139,6 +139,17 @@ class UserProfileUpdate(BaseModel):
     username: Optional[str] = None
     phone: Optional[str] = None
 
+
+class PasswordChangeRequest(BaseModel):
+    current_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=8)
+
+    @field_validator('new_password')
+    def validate_new_password(cls, value: str) -> str:
+        if len(value) < 8:
+            raise ValueError('New password must be at least 8 characters long')
+        return value
+
 class UserResponse(UserBase):
     id: int
     role: UserRole

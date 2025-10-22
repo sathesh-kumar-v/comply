@@ -18,7 +18,7 @@ from schemas import (
     UserCreate, UserLogin, Token, UserResponse, TokenData,
     PasswordResetRequest, PasswordResetConfirm, MFASetupRequest,
     MFASetupResponse, MFAVerifyRequest, MFALoginRequest, MFAStatusResponse,
-    GoogleOAuthRequest, UserUpdate, UserProfileUpdate
+    GoogleOAuthRequest, UserUpdate, UserProfileUpdate, PasswordChangeRequest
 )
 from email_service import email_service
 import os
@@ -434,6 +434,39 @@ async def update_current_user_profile(
     db.refresh(current_user)
 
     return UserResponse.model_validate(current_user)
+
+
+@router.post(
+    "/change-password",
+    status_code=status.HTTP_200_OK,
+    summary="Change Current User Password",
+    description="Allow the authenticated user to update their password after validating the current password.",
+)
+async def change_password(
+    change_request: PasswordChangeRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not verify_password(change_request.current_password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect",
+        )
+
+    if verify_password(change_request.new_password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must be different from the current password",
+        )
+
+    current_user.hashed_password = get_password_hash(change_request.new_password)
+    current_user.updated_at = datetime.utcnow()
+
+    db.add(current_user)
+    db.commit()
+    db.refresh(current_user)
+
+    return {"message": "Password updated successfully"}
 
 @router.get("/users",
             response_model=list[UserResponse],
