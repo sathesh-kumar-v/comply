@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Loader2, XCircle } from 'lucide-react'
@@ -10,6 +10,24 @@ import { authService } from '@/lib/auth'
 import { Button } from '@/components/ui/button'
 
 export default function GoogleOAuthCallbackPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-12">
+          <div className="flex flex-col items-center space-y-4 text-center">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <h1 className="text-lg font-semibold">Completing sign-in</h1>
+            <p className="text-sm text-muted-foreground">Preparing Google sign-in...</p>
+          </div>
+        </div>
+      }
+    >
+      <GoogleOAuthCallbackContent />
+    </Suspense>
+  )
+}
+
+function GoogleOAuthCallbackContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const { refreshUser } = useAuth()
